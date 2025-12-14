@@ -1,0 +1,39 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-45ad26f728d729c8b5d77b17168a674418e58b72",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "userSourceNameMap": {
+    "contracts/EHRRegistry.sol": "project/contracts/EHRRegistry.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/EHRRegistry.sol": {
+        "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.28;\r\n\r\ncontract EHRRegistry {\r\n\r\n    struct Record {\r\n        string fileHash;      // hash of encrypted medical file\r\n        address uploadedBy;   // doctor / lab\r\n        uint256 timestamp;\r\n    }\r\n\r\n    // patient => records\r\n    mapping(address => Record[]) private records;\r\n\r\n    event RecordAdded(\r\n        address indexed patient,\r\n        address indexed uploader,\r\n        string fileHash,\r\n        uint256 timestamp\r\n    );\r\n\r\n    function addRecord(\r\n        address patient,\r\n        string calldata fileHash\r\n    ) external {\r\n        records[patient].push(\r\n            Record(fileHash, msg.sender, block.timestamp)\r\n        );\r\n\r\n        emit RecordAdded(\r\n            patient,\r\n            msg.sender,\r\n            fileHash,\r\n            block.timestamp\r\n        );\r\n    }\r\n\r\n    function getRecordCount(address patient)\r\n        external\r\n        view\r\n        returns (uint256)\r\n    {\r\n        return records[patient].length;\r\n    }\r\n}\r\n"
+      }
+    }
+  }
+}
