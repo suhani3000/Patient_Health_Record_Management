@@ -1,0 +1,39 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-5f2583f741ca6fd3cce782b6b9dff57a5d0d0e88",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "userSourceNameMap": {
+    "contracts/EHRRegistry.sol": "project/contracts/EHRRegistry.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/EHRRegistry.sol": {
+        "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.28;\r\n\r\ncontract EHRRegistry {\r\n\r\n    struct FileMeta {\r\n        uint256 fileId;\r\n        string category; // lab / prescription / imaging\r\n        uint256 timestamp;\r\n    }\r\n\r\n    // patient => fileId counter\r\n    mapping(address => uint256) private fileCounter;\r\n\r\n    // patient => list of files\r\n    mapping(address => FileMeta[]) private patientFiles;\r\n\r\n    event FileRegistered(\r\n        address indexed patient,\r\n        uint256 indexed fileId,\r\n        string category\r\n    );\r\n\r\n    function registerFile(string memory _category) external {\r\n        uint256 newFileId = ++fileCounter[msg.sender];\r\n\r\n        patientFiles[msg.sender].push(\r\n            FileMeta(newFileId, _category, block.timestamp)\r\n        );\r\n\r\n        emit FileRegistered(msg.sender, newFileId, _category);\r\n    }\r\n\r\n    function getFiles(address _patient)\r\n        external\r\n        view\r\n        returns (FileMeta[] memory)\r\n    {\r\n        return patientFiles[_patient];\r\n    }\r\n}\r\n"
+      }
+    }
+  }
+}
