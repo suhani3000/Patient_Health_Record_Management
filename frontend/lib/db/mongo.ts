@@ -1,39 +1,39 @@
-// MongoDB Connection Utility
+import { MongoClient } from "mongodb"
 
-let isConnected = false
+const MONGODB_URI = process.env.MONGODB_URI!
+const MONGODB_DB = "healthchain"
 
-export interface MongoCollections {
-  users: any[]
-  medicalRecords: any[]
-  accessPermissions: any[]
-  aiSummaries: any[]
-  auditLogs: any[]
+if (!MONGODB_URI) {
+  throw new Error("Please define MONGODB_URI in .env.local")
 }
 
-// Mock in-memory database for hackathon demo
-const mockDb: MongoCollections = {
-  users: [],
-  medicalRecords: [],
-  accessPermissions: [],
-  aiSummaries: [],
-  auditLogs: [],
-}
+let cachedClient: MongoClient | null = null
 
 export async function connectToDatabase() {
-  if (isConnected) {
-    return mockDb
+  if (cachedClient) {
+    const db = cachedClient.db(MONGODB_DB)
+    return {
+      users: db.collection("users"),
+      medicalRecords: db.collection("medicalRecords"),
+      accessPermissions: db.collection("accessPermissions"),
+      aiSummaries: db.collection("aiSummaries"),
+      auditLogs: db.collection("auditLogs"),
+    }
   }
 
-  // In production, connect to MongoDB:
-  // const client = await MongoClient.connect(process.env.MONGODB_URI!)
-  // const db = client.db('ehr-platform')
+  const client = new MongoClient(MONGODB_URI)
+  await client.connect()
 
-  console.log("[MongoDB] Connected to mock database")
-  isConnected = true
+  cachedClient = client
+  const db = client.db(MONGODB_DB)
 
-  return mockDb
-}
+  console.log("[MongoDB] Connected successfully")
 
-export function getMockDatabase() {
-  return mockDb
+  return {
+    users: db.collection("users"),
+    medicalRecords: db.collection("medicalRecords"),
+    accessPermissions: db.collection("accessPermissions"),
+    aiSummaries: db.collection("aiSummaries"),
+    auditLogs: db.collection("auditLogs"),
+  }
 }
