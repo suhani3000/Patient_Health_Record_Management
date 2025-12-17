@@ -22,6 +22,7 @@ import { FileText, Users, History, LogOut, Download, Upload, UserPlus } from "lu
 import { useToast } from "@/hooks/use-toast"
 
 export default function PatientDashboard() {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const router = useRouter()
   const { toast } = useToast()
   const [user, setUser] = useState<any>(null)
@@ -283,6 +284,18 @@ export default function PatientDashboard() {
                     onChange={(e) => setUploadData({ ...uploadData, recordType: e.target.value })}
                   />
                 </div>
+
+                <div className="space-y-2">
+  <Label htmlFor="file">Upload File</Label>
+  <Input
+    id="file"
+    type="file"
+    accept=".pdf,.jpg,.jpeg,.png"
+    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+  />
+</div>
+
+
                 <div className="space-y-2">
                   <Label htmlFor="description">Description (Optional)</Label>
                   <Input
