@@ -20,6 +20,55 @@ export async function getProvider() {
   return new BrowserProvider(window.ethereum);
 }
 
+export async function registerFile(category: string) {
+  const contract = await getEHRRegistryContract();
+  const tx = await contract.registerFile(category);
+  await tx.wait();
+}
+
+export async function getMyFiles(patientAddress: string) {
+  const contract = await getEHRRegistryContract();
+  return await contract.getFiles(patientAddress);
+}
+
+
+export async function grantFileAccess(
+  doctor: string,
+  fileId: number,
+  accessType: number
+) {
+  const contract = await getEHRAccessContract();
+  const tx = await contract.grantAccess(doctor, fileId, accessType);
+  await tx.wait();
+}
+
+
+export async function checkFileAccess(
+  patient: string,
+  doctor: string,
+  fileId: number
+) {
+  const contract = await getEHRAccessContract();
+  return await contract.checkAccess(patient, doctor, fileId);
+}
+
+
+// export async function checkDoctorAccess(
+//   patient: string,
+//   doctor: string,
+//   fileId: number
+// ) {
+//   const contract = await getEHRAccessContract();
+//   return await contract.checkAccess(patient, doctor, fileId);
+// }
+
+// export async function getEHRAccessContract(): Promise<Contract> {
+//   const signer = await getSigner();
+//   return new Contract(EHR_ACCESS_ADDRESS, EHRAccessABI, signer);
+// }
+
+
+
 // 5️⃣ Get signer (current logged-in wallet)
 export async function getSigner() {
   const provider = await getProvider();
@@ -44,4 +93,6 @@ export async function getEHRAccessContract() {
     EHRAccessABI,
     signer
   );
+
+  
 }

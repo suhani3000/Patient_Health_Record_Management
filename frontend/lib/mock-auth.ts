@@ -1,4 +1,5 @@
 // Mock authentication system - no database required
+
 export interface User {
   id: string
   email: string
