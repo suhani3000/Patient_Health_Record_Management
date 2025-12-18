@@ -20,8 +20,18 @@ export async function GET(req: NextRequest) {
     }
 
     // Filter by role if specified
-    if (role && ["doctor", "lab"].includes(role)) {
-      filter.role = role
+    // if (role && ["doctor", "lab"].includes(role)) {
+    //   filter.role = role
+    //   filter.isVerified = true
+    // }
+    if (role) {
+      if (["doctor", "lab"].includes(role)) {
+        filter.role = role
+        filter.isVerified = true
+      }
+    } else {
+      // If no role specified, allow doctor + lab only
+      filter.role = { $in: ["doctor", "lab"] }
       filter.isVerified = true
     }
 
