@@ -80,7 +80,9 @@ export default function PatientDashboard() {
         fetch("/api/patient/records", { headers: getAuthHeaders() }),
         fetch("/api/patient/access/list", { headers: getAuthHeaders() }),
         fetch("/api/patient/audit-logs", { headers: getAuthHeaders() }),
-        fetch("/api/users/search?role=doctor", { headers: getAuthHeaders() }),
+        // fetch("/api/users/search?role=doctor", { headers: getAuthHeaders() }),
+        fetch("/api/users/search", { headers: getAuthHeaders() })
+
       ])
 
       if (recordsRes.ok) {
