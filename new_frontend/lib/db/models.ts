@@ -22,6 +22,7 @@ export interface MedicalRecord {
   fileName: string
   fileType: string // pdf, jpg, png
   fileUrl: string // Cloud storage URL
+  fileCID: string
   fileHash: string // SHA-256 hash for blockchain verification
   recordType: string // e.g., "Lab Report", "Prescription", "X-Ray"
   uploadDate: Date

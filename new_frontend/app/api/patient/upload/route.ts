@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const auditLogsCollection = db.collection<AuditLog>("auditLogs")
 
     const fileHash = `sha256_${Buffer.from(fileName + Date.now()).toString("base64")}`
-
+    const fileCID="";
     const fileUrl = fileData || `/uploads/${user.userId}/${Date.now()}_${fileName}`
 
     // Create medical record
@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
       fileName,
       fileType,
       fileUrl,
+      fileCID,
       fileHash,
       recordType,
       uploadDate: new Date(),
