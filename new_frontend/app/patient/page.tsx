@@ -20,6 +20,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FileText, Users, History, LogOut, Download, Upload, UserPlus } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+
 
 export default function PatientDashboard() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -237,6 +239,19 @@ export default function PatientDashboard() {
       </div>
     )
   }
+
+  // Inside your PatientDashboard component, create a derived data set:
+const graphData = records
+  .map(r => {
+    const s = r.summary; // You'll need to join these in your fetch or fetch separately
+    return {
+      date: new Date(r.uploadDate).toLocaleDateString(),
+      sugar: s?.vitals?.sugarLevel || null,
+      weight: s?.vitals?.weight || null,
+    };
+  })
+  .filter(d => d.sugar || d.weight)
+  .reverse();
 
   return (
     <div className="min-h-screen bg-background">
@@ -467,7 +482,7 @@ export default function PatientDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
-
+              
           <TabsContent value="history" className="space-y-4">
             <Card>
               <CardHeader>
@@ -500,6 +515,25 @@ export default function PatientDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+            {/*// In the JSX, add a new Card for the Health Trends:*/}
+          <Card className="col-span-4">
+            <CardHeader>
+              <CardTitle>Health Trends</CardTitle>
+                <CardDescription>Automatic tracking from your reports</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={graphData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="sugar" stroke="#ef4444" name="Sugar (mg/dL)" />
+              <Line type="monotone" dataKey="weight" stroke="#3b82f6" name="Weight (kg)" />
+            </LineChart>
+            </ResponsiveContainer>
+            </CardContent>
+          </Card>
         </Tabs>
       </main>
     </div>
