@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     const fileHash = `sha256_${Buffer.from(fileName + Date.now()).toString("base64")}`
+    const fileCID=""
     const fileUrl = fileData || `/uploads/${patientId}/${Date.now()}_${fileName}`
 
     // Create medical record
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
       fileName,
       fileType,
       fileUrl,
+      fileCID,
       fileHash,
       recordType,
       uploadDate: new Date(),
