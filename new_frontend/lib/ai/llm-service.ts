@@ -1,134 +1,57 @@
-// LLM Service for Medical Record Summarization
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { z } from "zod";
 
-export interface MedicalSummary {
-  diagnosis?: string
-  medications?: string[]
-  testResults?: Array<{
-    test: string
-    value: string
-    unit?: string
-    normalRange?: string
-  }>
-  recommendations?: string[]
-  keyFindings: string[]
-}
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY!);
 
-export async function generateMedicalSummary(recordText: string, recordType: string): Promise<MedicalSummary> {
-  // In production, call an actual LLM API (OpenAI, Anthropic, etc.)
-  // For this hackathon demo, we'll use a mock implementation
+// 1. Define your schema using Zod (This fixes all Type Errors)
+const MedicalSummarySchema = z.object({
+  diagnosis: z.string().optional(),
+  medications: z.array(z.string()).optional(),
+  testResults: z.array(z.object({
+    test: z.string(),
+    value: z.string(),
+    unit: z.string().optional(),
+    normalRange: z.string().optional()
+  })).optional(),
+  recommendations: z.array(z.string()).optional(),
+  keyFindings: z.array(z.string()),
+  vitals: z.object({
+    bloodPressure: z.string().nullable(),
+    sugarLevel: z.number().nullable(),
+    weight: z.number().nullable(),
+  }).optional()
+});
 
-  console.log("[LLM Service] Generating summary for:", recordType)
+export async function generateMedicalSummary(fileData: string, fileType: string, recordType: string) {
+  const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+  });
 
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  // Convert Zod schema to the JSON format Gemini expects
+  const prompt = `Analyze this ${recordType} document. Extract data into the required JSON format.
+  Extract Blood Pressure, Sugar (mg/dL), and Weight (kg) if present. 
+  
+  JSON Schema to follow:
+  ${JSON.stringify(MedicalSummarySchema.shape)}
+  
+  Return ONLY the JSON.`;
 
-  // Mock AI-generated summary based on record type
-  const mockSummaries: Record<string, MedicalSummary> = {
-    "Blood Test": {
-      diagnosis: "Routine blood work analysis",
-      medications: ["Vitamin D supplement recommended"],
-      testResults: [
-        {
-          test: "Hemoglobin",
-          value: "14.5",
-          unit: "g/dL",
-          normalRange: "13.5-17.5 g/dL",
-        },
-        {
-          test: "WBC Count",
-          value: "7.2",
-          unit: "×10³/µL",
-          normalRange: "4.5-11.0 ×10³/µL",
-        },
-        {
-          test: "Platelet Count",
-          value: "250",
-          unit: "×10³/µL",
-          normalRange: "150-400 ×10³/µL",
-        },
-        {
-          test: "Glucose",
-          value: "95",
-          unit: "mg/dL",
-          normalRange: "70-100 mg/dL",
-        },
-      ],
-      recommendations: ["All values within normal range", "Continue current health regimen", "Follow-up in 6 months"],
-      keyFindings: ["Normal hemoglobin levels", "WBC count within acceptable range", "Blood glucose normal"],
-    },
-    "X-Ray": {
-      diagnosis: "Chest X-ray examination",
-      keyFindings: [
-        "Clear lung fields bilaterally",
-        "No signs of consolidation or infiltrates",
-        "Cardiac silhouette within normal limits",
-        "No evidence of pleural effusion",
-      ],
-      recommendations: ["No immediate concerns", "Routine follow-up as needed"],
-    },
-    "MRI Scan": {
-      diagnosis: "MRI imaging analysis",
-      keyFindings: [
-        "No abnormal masses detected",
-        "Normal tissue density observed",
-        "Vascular structures appear normal",
-        "No signs of inflammation",
-      ],
-      recommendations: ["Results within normal parameters", "No further imaging required at this time"],
-    },
-    Prescription: {
-      diagnosis: "Medication prescription",
-      medications: ["Amoxicillin 500mg - Take 3 times daily for 7 days", "Ibuprofen 400mg - As needed for pain"],
-      keyFindings: ["Prescribed for bacterial infection treatment", "Pain management support included"],
-      recommendations: [
-        "Complete full course of antibiotics",
-        "Take with food to avoid stomach upset",
-        "Contact physician if symptoms worsen",
-      ],
-    },
-    "Lab Report": {
-      diagnosis: "Laboratory test analysis",
-      testResults: [
-        {
-          test: "Creatinine",
-          value: "1.0",
-          unit: "mg/dL",
-          normalRange: "0.7-1.3 mg/dL",
-        },
-        {
-          test: "ALT",
-          value: "25",
-          unit: "U/L",
-          normalRange: "7-56 U/L",
-        },
-        {
-          test: "AST",
-          value: "28",
-          unit: "U/L",
-          normalRange: "10-40 U/L",
-        },
-      ],
-      keyFindings: ["Kidney function normal", "Liver enzymes within acceptable range"],
-      recommendations: ["Results satisfactory", "Continue current treatment plan"],
-    },
+  // Handle the file data
+  const isBase64 = fileData.startsWith('data:');
+  const part = isBase64 
+    ? { inlineData: { data: fileData.split(',')[1], mimeType: fileType === 'pdf' ? 'application/pdf' : 'image/jpeg' } }
+    : { text: fileData };
+
+  const result = await model.generateContent([prompt, part]);
+  const responseText = result.response.text();
+  
+  // Parse and validate with Zod
+  try {
+    // We strip markdown blocks if Gemini adds them
+    const cleanJson = responseText.replace(/```json|```/g, "").trim();
+    return JSON.parse(cleanJson);
+  } catch (e) {
+    console.error("Failed to parse AI response:", responseText);
+    return { keyFindings: ["Error parsing document results"] };
   }
-
-  // Return mock summary based on record type, or generic summary
-  return (
-    mockSummaries[recordType] || {
-      diagnosis: `Analysis of ${recordType}`,
-      keyFindings: [
-        "AI-generated summary available",
-        "Report has been processed and analyzed",
-        "Results stored securely",
-      ],
-      recommendations: ["Consult with healthcare provider for detailed interpretation"],
-    }
-  )
-}
-
-export function extractTextFromFile(fileName: string, fileType: string): string {
-  // In production, use OCR or PDF parsing libraries
-  // For demo purposes, return mock extracted text
-  return `Mock extracted text from ${fileName} (${fileType})`
 }
