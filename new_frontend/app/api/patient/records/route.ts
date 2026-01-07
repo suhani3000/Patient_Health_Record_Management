@@ -1,7 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireRole } from "@/lib/auth/middleware"
+import { uploadFileToIPFS } from "@/lib/ipfs"
+
 import type { MedicalRecord } from "@/lib/db/models"
+// import { connectDB } from "@/lib/db";
+// import MedicalRecord from "@/lib/models/MedicalRecord";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,10 +18,11 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ records }, { status: 200 })
   } catch (error: any) {
-    console.error("[Patient Records API] Error:", error)
-    if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {
-      return NextResponse.json({ error: error.message }, { status: 401 })
-    }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
+  console.error("🔥 IPFS ERROR FULL:", error?.response?.data || error);
+
+  return NextResponse.json(
+    { error: "IPFS upload failed" },
+    { status: 500 }
+  );
+}
 }
