@@ -686,7 +686,7 @@ export default function PatientDashboard() {
 
       const token = localStorage.getItem("token")
       
-      const res = await fetch("/api/patient/upload", {
+      const res = await fetch("/api/patient/records", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -1048,14 +1048,14 @@ export default function PatientDashboard() {
                             <FileText className="h-4 w-4 text-muted-foreground" />
                             <span className="font-medium">{record.fileName}</span>
                             <Badge variant="secondary">{record.recordType}</Badge>
-                            {record.fileCID && (
+                            {record.cid && (
                               <Badge variant="outline" className="text-xs">
                                 ⛓️ Blockchain Verified
                               </Badge>
                             )}
                           </div>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            Uploaded on {new Date(record.uploadDate).toLocaleDateString()}
+                            Uploaded on {new Date(record.createdAt).toLocaleDateString()}
                             {record.metadata?.description && ` • ${record.metadata.description}`}
                             {/* {record.fileCID && ` • CID: ${record.fileCID.substring(0, 12)}...`} */}
                           </p>
@@ -1252,7 +1252,7 @@ export default function PatientDashboard() {
                       {records.slice(0, 3).map((record) => (
                         <li key={record._id} className="flex justify-between">
                           <span>{record.fileName}</span>
-                          <span>{new Date(record.uploadDate).toLocaleDateString()}</span>
+                          <span>{new Date(record.createdAt).toLocaleDateString()}</span>
                         </li>
                       ))}
                     </ul>

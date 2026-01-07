@@ -1,6 +1,6 @@
 import { uploadToPinata } from "./pinata"
 
-export { uploadToPinata }
+export { uploadToPinata as uploadFileToIPFS}
 
 export async function uploadJSONToPinata(obj: unknown, fileName = "data.json") {
   const blob = new Blob([JSON.stringify(obj)], { type: "application/json" })

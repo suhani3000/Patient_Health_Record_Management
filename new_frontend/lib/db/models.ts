@@ -1,5 +1,6 @@
 // MongoDB Schema Definitions for Healthcare EHR Platform
-
+import mongoose from "mongoose";
+import { ObjectId } from "mongodb";
 export interface User {
   _id: string
   email: string
@@ -14,23 +15,66 @@ export interface User {
   updatedAt: Date
 }
 
+// export interface MedicalRecord {
+//   _id: string
+//   patientId: string
+//   uploadedBy: string // userId of uploader (patient, doctor, or lab)
+//   uploaderRole: "patient" | "doctor" | "lab"
+//   fileName: string
+//   fileType: string // pdf, jpg, png
+//   fileUrl: string // Cloud storage URL
+//   fileCID: string
+//   fileHash: string // SHA-256 hash for blockchain verification
+//   recordType: string // e.g., "Lab Report", "Prescription", "X-Ray"
+//   uploadDate: Date
+//   metadata?: {
+//     description?: string
+//     labName?: string
+//     testType?: string
+//   }
+// }
+
+// export interface MedicalRecord {
+//   patientId: {
+//     type: mongoose.Schema.Types.ObjectId,
+//     ref: "User",
+//     required: true,
+//   },
+
+//   uploadedBy: {
+//     type: mongoose.Schema.Types.ObjectId,
+//     ref: "User",
+//     required: true,
+//   },
+
+//   fileName: {
+//     type: String,
+//     required: true,
+//   },
+
+//   cid: {
+//     type: String,
+//     required: true,
+//   },
+
+//   fileSize: Number,
+
+//   createdAt: {
+//     type: Date,
+//     default: Date,
+//   },
+// }
+
 export interface MedicalRecord {
-  _id: string
-  patientId: string
-  uploadedBy: string // userId of uploader (patient, doctor, or lab)
-  uploaderRole: "patient" | "doctor" | "lab"
-  fileName: string
-  fileType: string // pdf, jpg, png
-  fileUrl: string // Cloud storage URL
-  fileCID: string
-  fileHash: string // SHA-256 hash for blockchain verification
-  recordType: string // e.g., "Lab Report", "Prescription", "X-Ray"
-  uploadDate: Date
-  metadata?: {
-    description?: string
-    labName?: string
-    testType?: string
-  }
+  _id?: ObjectId;
+  patientId: ObjectId;
+  uploadedBy: ObjectId;
+  fileName: string;
+  cid: string;
+  fileSize?: number;
+  recordType: string,
+  description:string,
+  createdAt: Date;
 }
 
 export interface AccessPermission {
