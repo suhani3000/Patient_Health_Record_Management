@@ -66,15 +66,16 @@ export interface User {
 // }
 
 export interface MedicalRecord {
-  _id?: ObjectId;
-  patientId: ObjectId;
-  uploadedBy: ObjectId;
-  fileName: string;
-  cid: string;
-  fileSize?: number;
-  recordType: string,
-  description:string,
-  createdAt: Date;
+  _id?: ObjectId
+  patientId: ObjectId
+  uploadedBy: ObjectId
+  uploaderRole: "patient" | "doctor" | "lab"
+  fileName: string
+  cid: string
+  fileSize?: number
+  recordType: string
+  description: string
+  createdAt: Date
 }
 
 export interface AccessPermission {

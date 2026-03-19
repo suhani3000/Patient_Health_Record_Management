@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireRole } from "@/lib/auth/middleware"
 import type { AuditLog, User } from "@/lib/db/models"
-import { ObjectId } from "mongodb"
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,13 +10,13 @@ export async function GET(req: NextRequest) {
     const auditLogsCollection = db.collection<AuditLog>("auditLogs")
     const usersCollection = db.collection<User>("users")
 
-    const logs = await auditLogsCollection.find({ patientId: user.userId }).sort({ timestamp: -1 }).toArray()
+    const logs = await auditLogsCollection.find({ patientId: user.userId.toString() }).sort({ timestamp: -1 }).toArray()
 
     const enrichedLogs = await Promise.all(
       logs.map(async (log) => {
-        const performedByUser = await usersCollection.findOne({ _id: new ObjectId(log.performedBy) })
+        const performedByUser = await usersCollection.findOne({ _id: log.performedBy.toString() })
         const targetUser = log.targetUserId
-          ? await usersCollection.findOne({ _id: new ObjectId(log.targetUserId) })
+          ? await usersCollection.findOne({ _id: log.targetUserId.toString() })
           : null
 
         return {

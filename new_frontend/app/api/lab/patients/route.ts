@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireVerified } from "@/lib/auth/middleware"
 import type { AccessPermission, User } from "@/lib/db/models"
-import { ObjectId } from "mongodb"
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,7 +25,7 @@ export async function GET(req: NextRequest) {
 
     const patients = await Promise.all(
       permissions.map(async (p) => {
-        const patient = await usersCollection.findOne({ _id: new ObjectId(p.patientId) })
+        const patient = await usersCollection.findOne({ _id: p.patientId.toString() })
         return {
           patientId: p.patientId,
           patientName: patient?.name || "Unknown",

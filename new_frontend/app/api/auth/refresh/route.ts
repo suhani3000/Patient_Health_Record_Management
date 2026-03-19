@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const user = await usersCollection.findOne({ _id: userId })
+    const user = await usersCollection.findOne({ _id: userId.toString() })
 
     if (!user) {
       return NextResponse.json(

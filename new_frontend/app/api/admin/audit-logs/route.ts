@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireRole } from "@/lib/auth/middleware"
 import type { AuditLog, User } from "@/lib/db/models"
-import { ObjectId } from "mongodb"
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,11 +17,11 @@ export async function GET(req: NextRequest) {
 
     const enrichedLogs = await Promise.all(
       logs.map(async (log) => {
-        const performedByUser = await usersCollection.findOne({ _id: new ObjectId(log.performedBy) })
+        const performedByUser = await usersCollection.findOne({ _id: log.performedBy })
         const targetUser = log.targetUserId
-          ? await usersCollection.findOne({ _id: new ObjectId(log.targetUserId) })
+          ? await usersCollection.findOne({ _id: log.targetUserId })
           : null
-        const patient = log.patientId ? await usersCollection.findOne({ _id: new ObjectId(log.patientId) }) : null
+        const patient = log.patientId ? await usersCollection.findOne({ _id: log.patientId }) : null
 
         return {
           ...log,

@@ -97,11 +97,7 @@ import { getDatabase } from "@/lib/db/mongo"
 import { requireVerified } from "@/lib/auth/middleware"
 import type { MedicalRecord, AccessPermission, AuditLog } from "@/lib/db/models"
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-}
+export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
   try {

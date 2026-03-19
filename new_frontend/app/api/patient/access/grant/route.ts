@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireRole } from "@/lib/auth/middleware"
 import type { AccessPermission, AuditLog, User } from "@/lib/db/models"
-import { ObjectId } from "mongodb"
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +21,7 @@ export async function POST(req: NextRequest) {
     const permissionsCollection = db.collection<AccessPermission>("accessPermissions")
     const auditLogsCollection = db.collection<AuditLog>("auditLogs")
 
-    const grantedToUser = await usersCollection.findOne({ _id: new ObjectId(userId) })
+    const grantedToUser = await usersCollection.findOne({ _id: userId.toString() })
     if (!grantedToUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
@@ -38,7 +37,7 @@ export async function POST(req: NextRequest) {
     }
 
     const existingPermission = await permissionsCollection.findOne({
-      patientId: user.userId,
+      patientId: user.userId.toString(),
       grantedTo: userId,
       isActive: true,
     })
@@ -49,7 +48,7 @@ export async function POST(req: NextRequest) {
 
     // Create new permission
     const newPermission: Omit<AccessPermission, "_id"> = {
-      patientId: user.userId,
+      patientId: user.userId.toString(),
       grantedTo: userId,
       grantedToRole: grantedToUser.role as "doctor" | "lab",
       accessLevel: accessLevel as "view" | "upload" | "view-upload",
@@ -63,10 +62,10 @@ export async function POST(req: NextRequest) {
     // Create audit log
     const auditLog: Omit<AuditLog, "_id"> = {
       action: "grant_access",
-      performedBy: user.userId,
+      performedBy: user.userId.toString(),
       performedByRole: "patient",
       targetUserId: userId,
-      patientId: user.userId,
+      patientId: user.userId.toString(),
       timestamp: new Date(),
       blockchainTxHash: newPermission.blockchainTxHash,
       metadata: {

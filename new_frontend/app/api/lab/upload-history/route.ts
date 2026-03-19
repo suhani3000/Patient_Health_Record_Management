@@ -16,11 +16,14 @@ export async function GET(req: NextRequest) {
     const recordsCollection = db.collection<MedicalRecord>("medicalRecords")
     const usersCollection = db.collection<User>("users")
 
-    const records = await recordsCollection.find({ uploadedBy: user.userId }).sort({ uploadDate: -1 }).toArray()
+    const records = await recordsCollection
+      .find({ uploadedBy: new ObjectId(user.userId) })
+      .sort({ uploadDate: -1 })
+      .toArray()
 
     const enrichedRecords = await Promise.all(
       records.map(async (record) => {
-        const patient = await usersCollection.findOne({ _id: new ObjectId(record.patientId) })
+        const patient = await usersCollection.findOne({ _id: record.patientId.toString() })
         return {
           ...record,
           patientName: patient?.name || "Unknown",

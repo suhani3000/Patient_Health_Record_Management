@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireRole } from "@/lib/auth/middleware"
 import type { AccessPermission, User } from "@/lib/db/models"
-import { ObjectId } from "mongodb"
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,11 +10,11 @@ export async function GET(req: NextRequest) {
     const permissionsCollection = db.collection<AccessPermission>("accessPermissions")
     const usersCollection = db.collection<User>("users")
 
-    const permissions = await permissionsCollection.find({ patientId: user.userId }).toArray()
+    const permissions = await permissionsCollection.find({ patientId: user.userId.toString() }).toArray()
 
     const enrichedPermissions = await Promise.all(
       permissions.map(async (p) => {
-        const grantedToUser = await usersCollection.findOne({ _id: new ObjectId(p.grantedTo) })
+        const grantedToUser = await usersCollection.findOne({ _id: p.grantedTo.toString() })
         return {
           ...p,
           grantedToUser: grantedToUser
