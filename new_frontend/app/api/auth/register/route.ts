@@ -5,7 +5,15 @@ import type { User } from "@/lib/db/models"
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, name, role, specialization, licenseNumber } = await req.json()
+    let body: any
+    try {
+      body = await req.json()
+    } catch (e) {
+      console.error("[Register API] Invalid JSON body:", e)
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+
+    const { email, password, name, role, specialization, licenseNumber } = body
 
     // Validate input
     if (!email || !password || !name || !role) {
@@ -16,7 +24,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 })
     }
 
-    const db = await getDatabase()
+    let db
+    try {
+      db = await getDatabase()
+    } catch (e) {
+      console.error("[Register API] Database not configured/available:", e)
+      return NextResponse.json(
+        {
+          error:
+            "Authentication service is not available (database connection failed). Check MONGODB_URI/network access.",
+        },
+        { status: 503 }
+      )
+    }
     const usersCollection = db.collection<User>("users")
 
     // Check if user already exists

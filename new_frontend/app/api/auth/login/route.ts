@@ -9,7 +9,15 @@ export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json()
+    let body: any
+    try {
+      body = await req.json()
+    } catch (e) {
+      console.error("[Login API Error] Invalid JSON body", e)
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+
+    const { email, password } = body
 
     if (!email || !password) {
       return NextResponse.json(
@@ -67,7 +75,19 @@ export async function POST(req: NextRequest) {
 
 
     // 👤 NORMAL USERS
-    const db = await getDatabase()
+    let db
+    try {
+      db = await getDatabase()
+    } catch (e) {
+      console.error("[Login API Error] Database not configured/available", e)
+      return NextResponse.json(
+        {
+          error:
+            "Authentication service is not available (database connection failed). Check MONGODB_URI/network access.",
+        },
+        { status: 503 }
+      )
+    }
     const usersCollection = db.collection<User>("users")
 
     const user = await usersCollection.findOne({ email })
