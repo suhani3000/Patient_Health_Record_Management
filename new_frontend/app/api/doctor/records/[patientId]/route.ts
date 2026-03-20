@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireVerified } from "@/lib/auth/middleware"
 import type { MedicalRecord, AccessPermission, AuditLog } from "@/lib/db/models"
+import { ObjectId } from "mongodb"
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ patientId: string }> }) {
   try {
@@ -17,6 +18,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ pati
     const recordsCollection = db.collection<MedicalRecord>("medicalRecords")
     const auditLogsCollection = db.collection<AuditLog>("auditLogs")
 
+    const patientObjectId = ObjectId.isValid(patientId) ? new ObjectId(patientId) : null
+    if (!patientObjectId) {
+      return NextResponse.json({ error: "Invalid patientId" }, { status: 400 })
+    }
+
     const permission = await permissionsCollection.findOne({
       patientId,
       grantedTo: user.userId,
@@ -28,7 +34,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ pati
       return NextResponse.json({ error: "No access to this patient's records" }, { status: 403 })
     }
 
-    const records = await recordsCollection.find({ patientId }).sort({ uploadDate: -1 }).toArray()
+    const records = await recordsCollection
+      .find({ patientId: patientObjectId })
+      .sort({ uploadDate: -1 })
+      .toArray()
 
     // Log the access
     const auditLog: Omit<AuditLog, "_id"> = {

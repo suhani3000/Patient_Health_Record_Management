@@ -7,6 +7,8 @@ export interface JWTPayload {
   email: string
   role: "patient" | "doctor" | "lab" | "admin"
   isVerified: boolean
+  // Some UI/server code expects a display name; if not present, keep it optional.
+  name?: string
 }
 
 export interface RefreshTokenPayload {

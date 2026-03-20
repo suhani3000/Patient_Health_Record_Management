@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireRole } from "@/lib/auth/middleware"
 import type { AccessPermission, User } from "@/lib/db/models"
+import { ObjectId } from "mongodb"
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,7 +15,17 @@ export async function GET(req: NextRequest) {
 
     const enrichedPermissions = await Promise.all(
       permissions.map(async (p) => {
-        const grantedToUser = await usersCollection.findOne({ _id: p.grantedTo.toString() })
+        const grantedToStr = p.grantedTo?.toString?.() ?? String(p.grantedTo)
+        const grantedToObjectId =
+          ObjectId.isValid(grantedToStr) ? new ObjectId(grantedToStr) : null
+
+        let grantedToUser = grantedToObjectId
+          ? await usersCollection.findOne({ _id: grantedToObjectId })
+          : null
+        if (!grantedToUser) {
+          // Fallback in case `_id` in Mongo is stored as string.
+          grantedToUser = await usersCollection.findOne({ _id: grantedToStr })
+        }
         return {
           ...p,
           grantedToUser: grantedToUser

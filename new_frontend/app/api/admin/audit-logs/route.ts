@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireRole } from "@/lib/auth/middleware"
 import type { AuditLog, User } from "@/lib/db/models"
+import { ObjectId } from "mongodb"
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,11 +18,37 @@ export async function GET(req: NextRequest) {
 
     const enrichedLogs = await Promise.all(
       logs.map(async (log) => {
-        const performedByUser = await usersCollection.findOne({ _id: log.performedBy })
-        const targetUser = log.targetUserId
-          ? await usersCollection.findOne({ _id: log.targetUserId })
+        const performedByIdStr = log.performedBy?.toString?.() ?? String(log.performedBy)
+        const performedByObjectId =
+          performedByIdStr && ObjectId.isValid(performedByIdStr) ? new ObjectId(performedByIdStr) : null
+
+        let performedByUser = performedByObjectId
+          ? await usersCollection.findOne({ _id: performedByObjectId })
           : null
-        const patient = log.patientId ? await usersCollection.findOne({ _id: log.patientId }) : null
+        if (!performedByUser) {
+          performedByUser = await usersCollection.findOne({ _id: performedByIdStr })
+        }
+
+        const targetUserIdStr =
+          log.targetUserId?.toString?.() ?? (log.targetUserId ? String(log.targetUserId) : null)
+        const targetUserObjectId =
+          targetUserIdStr && ObjectId.isValid(targetUserIdStr) ? new ObjectId(targetUserIdStr) : null
+
+        let targetUser = targetUserObjectId
+          ? await usersCollection.findOne({ _id: targetUserObjectId })
+          : null
+        if (!targetUser && targetUserIdStr) {
+          targetUser = await usersCollection.findOne({ _id: targetUserIdStr })
+        }
+
+        const patientIdStr = log.patientId ? log.patientId?.toString?.() ?? String(log.patientId) : null
+        const patientObjectId =
+          patientIdStr && ObjectId.isValid(patientIdStr) ? new ObjectId(patientIdStr) : null
+
+        let patient = patientObjectId ? await usersCollection.findOne({ _id: patientObjectId }) : null
+        if (!patient && patientIdStr) {
+          patient = await usersCollection.findOne({ _id: patientIdStr })
+        }
 
         return {
           ...log,

@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
       patientId: new ObjectId(user.userId),
       uploadedBy: new ObjectId(user.userId),
       fileName: fileName,
+      fileType: file.type,
       cid: ipfsResult.cid,
       fileSize: ipfsResult.size,
       recordType: recordType,

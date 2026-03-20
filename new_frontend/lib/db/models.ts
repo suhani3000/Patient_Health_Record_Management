@@ -2,7 +2,9 @@
 import mongoose from "mongoose";
 import { ObjectId } from "mongodb";
 export interface User {
-  _id: string
+  // In MongoDB this is typically an ObjectId, but parts of the codebase
+  // also treat it as a string (after JSON serialization).
+  _id: ObjectId | string
   email: string
   password: string // hashed
   name: string
@@ -71,11 +73,23 @@ export interface MedicalRecord {
   uploadedBy: ObjectId
   uploaderRole: "patient" | "doctor" | "lab"
   fileName: string
-  cid: string
+
+  // Pinata CID (preferred). Some older routes use mock_* fields.
+  cid?: string
+  fileCID?: string
+
   fileSize?: number
+  fileType?: string
+  fileUrl?: string
+  fileHash?: string
+
   recordType: string
-  description: string
-  createdAt: Date
+  description?: string
+  metadata?: Record<string, any>
+
+  // Different routes use different timestamp field names.
+  createdAt?: Date
+  uploadDate?: Date
 }
 
 export interface AccessPermission {

@@ -1,35 +1,46 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { connectToDatabase } from "@/lib/db/mongo"
 import { requireAuth } from "@/lib/auth/middleware"
-import type { MedicalRecord, AISummary } from "@/lib/db/models"
+import type { MedicalRecord, AISummary, AccessPermission } from "@/lib/db/models"
+import { ObjectId } from "mongodb"
 
-export async function GET(req: NextRequest, { params }: { params: { recordId: string } }) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ recordId: string }> },
+) {
   try {
     const user = requireAuth(req)
-    const { recordId } = params
+    const { recordId } = await params
 
-    const db = await connectToDatabase()
+    const { db } = await connectToDatabase()
+    const recordsCollection = db.collection<MedicalRecord>("medicalRecords")
+    const permissionsCollection = db.collection<AccessPermission>("accessPermissions")
+    const aiSummariesCollection = db.collection<AISummary>("aiSummaries")
 
     // Find the record
-    const record = db.medicalRecords.find((r: MedicalRecord) => r._id === recordId)
+    const recordObjectId = ObjectId.isValid(recordId) ? new ObjectId(recordId) : null
+    if (!recordObjectId) {
+      return NextResponse.json({ error: "Invalid recordId" }, { status: 400 })
+    }
+
+    const record = await recordsCollection.findOne({ _id: recordObjectId })
     if (!record) {
       return NextResponse.json({ error: "Record not found" }, { status: 404 })
     }
 
     // Check if user has access to this record
-    if (user.role === "patient" && record.patientId !== user.userId) {
+    if (user.role === "patient" && record.patientId.toString() !== user.userId) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
     if (user.role === "doctor" || user.role === "lab") {
       // Check if they have access to this patient
-      const hasAccess = db.accessPermissions.some(
-        (p: any) =>
-          p.patientId === record.patientId &&
-          p.grantedTo === user.userId &&
-          p.isActive &&
-          p.accessLevel.includes("view"),
-      )
+      const hasAccess = await permissionsCollection.findOne({
+        patientId: record.patientId.toString(),
+        grantedTo: user.userId,
+        isActive: true,
+        accessLevel: { $in: ["view", "view-upload"] },
+      })
 
       if (!hasAccess) {
         return NextResponse.json({ error: "Access denied" }, { status: 403 })
@@ -37,7 +48,7 @@ export async function GET(req: NextRequest, { params }: { params: { recordId: st
     }
 
     // Find the summary
-    const summary = db.aiSummaries.find((s: AISummary) => s.recordId === recordId)
+    const summary = await aiSummariesCollection.findOne({ recordId })
 
     if (!summary) {
       return NextResponse.json({ error: "Summary not found", exists: false }, { status: 404 })

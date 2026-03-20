@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireRole } from "@/lib/auth/middleware"
 import type { AccessPermission, AuditLog } from "@/lib/db/models"
+import { ObjectId } from "mongodb"
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,13 +13,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 })
     }
 
+    const userIdStr =
+      typeof userId === "string" ? userId : typeof userId?.toString === "function" ? userId.toString() : null
+    if (!userIdStr) {
+      return NextResponse.json({ error: "Invalid userId" }, { status: 400 })
+    }
+
     const db = await getDatabase()
     const permissionsCollection = db.collection<AccessPermission>("accessPermissions")
     const auditLogsCollection = db.collection<AuditLog>("auditLogs")
 
     const permission = await permissionsCollection.findOne({
       patientId: user.userId,
-      grantedTo: userId,
+      grantedTo: userIdStr,
       isActive: true,
     })
 
@@ -41,7 +48,7 @@ export async function POST(req: NextRequest) {
       action: "revoke_access",
       performedBy: user.userId,
       performedByRole: "patient",
-      targetUserId: userId,
+      targetUserId: userIdStr,
       patientId: user.userId,
       timestamp: new Date(),
       blockchainTxHash: `0x${Math.random().toString(16).substr(2, 64)}`,

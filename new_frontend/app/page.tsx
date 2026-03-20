@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 export default function LandingPage() {
   const router = useRouter()
   const [showAuth, setShowAuth] = useState(false)
-  const [selectedRole, setSelectedRole] = useState<"patient" | "doctor" | "lab" | null>(null)
+  const [selectedRole, setSelectedRole] = useState<"patient" | "doctor" | "lab" | "admin" | null>(null)
   const [formData, setFormData] = useState({
     email: "",
     password: "",

@@ -67,3 +67,16 @@
 //     );
 //   }
 // }
+
+import type { NextRequest } from "next/server"
+import { NextResponse } from "next/server"
+
+// Legacy route kept for compatibility; the working upload endpoint is `POST /api/patient/records`.
+export const runtime = "nodejs"
+
+export async function POST(_req: NextRequest) {
+  return NextResponse.json(
+    { error: "Not implemented. Use POST /api/patient/records instead." },
+    { status: 404 },
+  )
+}

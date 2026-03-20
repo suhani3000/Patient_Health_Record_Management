@@ -23,7 +23,11 @@ export async function GET(req: NextRequest) {
 
     const enrichedRecords = await Promise.all(
       records.map(async (record) => {
-        const patient = await usersCollection.findOne({ _id: record.patientId.toString() })
+        const patientIdStr = record.patientId?.toString?.() ?? String(record.patientId)
+        const patientObjectId = ObjectId.isValid(patientIdStr) ? new ObjectId(patientIdStr) : null
+
+        let patient = patientObjectId ? await usersCollection.findOne({ _id: patientObjectId }) : null
+        if (!patient) patient = await usersCollection.findOne({ _id: patientIdStr })
         return {
           ...record,
           patientName: patient?.name || "Unknown",

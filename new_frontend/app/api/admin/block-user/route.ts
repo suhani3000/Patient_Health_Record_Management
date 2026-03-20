@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireRole } from "@/lib/auth/middleware"
 import type { User } from "@/lib/db/models"
+import { ObjectId } from "mongodb"
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +20,14 @@ export async function POST(req: NextRequest) {
     const db = await getDatabase()
     const usersCollection = db.collection<User>("users")
 
-    const user = await usersCollection.findOne({ _id: userId })
+    const userIdStr =
+      typeof userId === "string" ? userId : typeof userId?.toString === "function" ? userId.toString() : null
+    const userObjectId = userIdStr && ObjectId.isValid(userIdStr) ? new ObjectId(userIdStr) : null
+    if (!userObjectId) {
+      return NextResponse.json({ error: "Invalid userId" }, { status: 400 })
+    }
+
+    const user = await usersCollection.findOne({ _id: userObjectId })
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
@@ -29,7 +37,10 @@ export async function POST(req: NextRequest) {
     }
 
     const isBlocked = action === "block"
-    await usersCollection.updateOne({ _id: userId }, { $set: { isBlocked, updatedAt: new Date() } })
+    await usersCollection.updateOne(
+      { _id: userObjectId },
+      { $set: { isBlocked, updatedAt: new Date() } },
+    )
 
     return NextResponse.json(
       {

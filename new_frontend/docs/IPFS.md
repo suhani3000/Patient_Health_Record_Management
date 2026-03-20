@@ -1,25 +1,31 @@
 # IPFS Integration (Pinata)
 
-Overview
-- The project uses Pinata for IPFS pinning from server-side API routes.
+## Overview
+The app uploads files to IPFS via Pinata from **server-side** code.
 
-Environment
-- Set `PINATA_JWT` in your environment (server) with a Pinata JWT that has pinning permissions.
+## Environment
+Set `PINATA_JWT` in `new_frontend/.env.local` (server-side only) with pinning permissions.
 
-Helpers
-- `lib/ipfs/pinata.ts` — low-level upload helper used by API routes.
-- `lib/ipfs/index.ts` — convenience wrapper that re-exports `uploadToPinata`, provides `uploadJSONToPinata`, and `cidToGatewayUrl`.
+## Current Helper
+- `new_frontend/lib/ipfs.ts` -> `uploadFileToIPFS(buffer, fileName)` returning `{ cid, size }`
 
-Server usage (example)
+## Server usage
 
 Import and call from an App Route or API route:
 
 ```ts
-import { uploadToPinata } from "@/lib/ipfs/pinata"
+import { uploadFileToIPFS } from "@/lib/ipfs"
 
-const result = await uploadToPinata(file)
-// result: { cid, url }
+const buffer = Buffer.from(await file.arrayBuffer())
+const ipfsResult = await uploadFileToIPFS(buffer, file.name)
+
+// ipfsResult: { cid, size }
+const gatewayUrl = `https://gateway.pinata.cloud/ipfs/${ipfsResult.cid}`
 ```
 
-Notes
-- Frontend direct-to-IPFS uploads are not implemented by default. If you want client-side uploads, add a provider such as `ipfs-http-client` or `web3.storage` and follow their browser examples. Remember to avoid exposing secret keys in the browser.
+## Dev/offline behavior
+If Pinata upload fails with `401/403` (or you run non-production), the server falls back to a `mock_cid_*`
+so your UI/routes remain usable during local development.
+
+## Notes
+Frontend direct-to-IPFS uploads are still not implemented by default (do not expose Pinata secrets in the browser).

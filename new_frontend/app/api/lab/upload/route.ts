@@ -96,6 +96,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireVerified } from "@/lib/auth/middleware"
 import type { MedicalRecord, AccessPermission, AuditLog } from "@/lib/db/models"
+import { ObjectId } from "mongodb"
 
 export const runtime = "nodejs"
 
@@ -147,8 +148,8 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer())
 
     const newRecord: Omit<MedicalRecord, "_id"> = {
-      patientId,
-      uploadedBy: user.userId,
+      patientId: new ObjectId(patientId),
+      uploadedBy: new ObjectId(user.userId),
       uploaderRole: "lab",
       fileName,
       fileType: file.type || fileType || "application/octet-stream",
