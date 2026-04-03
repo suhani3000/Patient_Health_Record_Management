@@ -25,8 +25,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
     }
 
-    const { blockchainAddress, email, role } = body
-
+    const { blockchainAddress, email, role, encryptionPublicKey } = body
     // ── Validation ──────────────────────────────────────────────────────────
     if (!blockchainAddress) {
       return NextResponse.json(
@@ -77,6 +76,13 @@ export async function POST(req: NextRequest) {
         )
       }
 
+      if (encryptionPublicKey && !existingUser.encryptionPublicKey) {
+        await usersCollection.updateOne(
+          { _id: existingUser._id },
+          { $set: { encryptionPublicKey } }
+        )
+      }
+
       const token = generateToken({
         userId: existingUser._id.toString(),
         email: existingUser.email,
@@ -115,17 +121,18 @@ export async function POST(req: NextRequest) {
       ? email.split("@")[0].replace(/[._+-]/g, " ")
       : `Wallet_${normalizedAddress.slice(2, 8)}`
 
-    const newUser: Omit<User, "_id"> = {
-      email: email ?? `${normalizedAddress}@wallet.local`,
-      password: "", // No password — Thirdweb wallet is the credential
-      name: displayName,
-      role: role as User["role"],
-      isVerified: role === "patient", // Patients auto-verified; Doctor/Lab require admin approval
-      isBlocked: false,
-      blockchainAddress: normalizedAddress,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }
+      const newUser: Omit<User, "_id"> = {
+        email: email ?? `${normalizedAddress}@wallet.local`,
+        password: "",
+        name: displayName,
+        role: role as User["role"],
+        isVerified: role === "patient",
+        isBlocked: false,
+        blockchainAddress: normalizedAddress,
+        encryptionPublicKey: encryptionPublicKey ?? undefined,  // ← ADD THIS LINE
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
 
     const result = await usersCollection.insertOne(newUser as any)
 

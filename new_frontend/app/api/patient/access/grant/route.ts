@@ -7,7 +7,7 @@ import { ObjectId } from "mongodb"
 export async function POST(req: NextRequest) {
   try {
     const user = requireRole(req, ["patient"])
-    const { userId, accessLevel, blockchainTxHash = null } = await req.json()
+    const { userId, accessLevel, blockchainTxHash = null, doctorKeyMap = {}, doctorAddress = null } = await req.json()
 
     if (!userId || !accessLevel) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -70,6 +70,19 @@ export async function POST(req: NextRequest) {
     }
 
     const permResult = await permissionsCollection.insertOne(newPermission as any)
+
+    // Save doctor-specific encrypted AES keys into each MedicalRecord
+if (doctorAddress && Object.keys(doctorKeyMap).length > 0) {
+  const recordsCollection = db.collection("medicalRecords")
+  const updateOps = Object.entries(doctorKeyMap).map(([recordId, encryptedKey]) => {
+    if (!ObjectId.isValid(recordId)) return null
+    return recordsCollection.updateOne(
+      { _id: new ObjectId(recordId) },
+      { $set: { [`doctorKeys.${doctorAddress.toLowerCase()}`]: encryptedKey } }
+    )
+  }).filter(Boolean)
+  await Promise.all(updateOps)
+}
 
     // Create audit log
     const auditLog: Omit<AuditLog, "_id"> = {

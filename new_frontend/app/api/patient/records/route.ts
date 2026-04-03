@@ -77,21 +77,28 @@ export async function POST(req: NextRequest) {
     //   fileSize: ipfsResult.size,
     //   uploadDate: new Date(),
     // };
-    const fileName = formData.get("fileName")?.toString() || file.name;
-    const recordType = formData.get("recordType")?.toString();
-    const description = formData.get("description")?.toString();
+    const fileName = formData.get("fileName")?.toString() || file.name
+const recordType = formData.get("recordType")?.toString()
+const description = formData.get("description")?.toString()
+const encryptedAESKey = formData.get("encryptedAESKey")?.toString() ?? null
+const aesIV = formData.get("aesIV")?.toString() ?? null
 
-    const record = {
-      patientId: new ObjectId(user.userId),
-      uploadedBy: new ObjectId(user.userId),
-      fileName: fileName,
-      fileType: file.type,
-      cid: ipfsResult.cid,
-      fileSize: ipfsResult.size,
-      recordType: recordType,
-      description:description,
-      createdAt: new Date(),
-    };
+
+const record = {
+  patientId: new ObjectId(user.userId),
+  uploadedBy: new ObjectId(user.userId),
+  uploaderRole: "patient" as const,
+  fileName: fileName,
+  fileType: file.type,
+  cid: ipfsResult.cid,
+  fileSize: ipfsResult.size,
+  recordType: recordType,
+  description: description,
+  encryptedAESKey: encryptedAESKey,   // ← NEW
+  aesIV: aesIV,                        // ← NEW
+  doctorKeys: {},                      // ← NEW: empty map, filled when access is granted
+  createdAt: new Date(),
+}
 
     const result = await recordsCollection.insertOne(record);
     console.log("✅ MongoDB insert ID:", result.insertedId);
