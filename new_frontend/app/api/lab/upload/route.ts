@@ -157,6 +157,8 @@ export async function POST(req: NextRequest) {
       fileCID,
       fileHash,
       recordType,
+      fileId: Number(0),
+      transactionHash: String(""),
       uploadDate: new Date(),
       metadata: {
         description,

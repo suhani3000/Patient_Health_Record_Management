@@ -7,7 +7,7 @@ import { ObjectId } from "mongodb"
 export async function POST(req: NextRequest) {
   try {
     const user = requireRole(req, ["patient"])
-    const { userId, accessLevel } = await req.json()
+    const { userId, accessLevel, blockchainTxHash = null } = await req.json()
 
     if (!userId || !accessLevel) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -65,7 +65,8 @@ export async function POST(req: NextRequest) {
       accessLevel: accessLevel as "view" | "upload" | "view-upload",
       grantedAt: new Date(),
       isActive: true,
-      blockchainTxHash: `0x${Math.random().toString(16).substr(2, 64)}`,
+      // Real hash from EHRAccess.grantAccess() tx; null if chain call was skipped
+      blockchainTxHash: blockchainTxHash ?? undefined,
     }
 
     const permResult = await permissionsCollection.insertOne(newPermission as any)

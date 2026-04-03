@@ -7,7 +7,7 @@ import { ObjectId } from "mongodb"
 export async function POST(req: NextRequest) {
   try {
     const user = requireRole(req, ["patient"])
-    const { userId } = await req.json()
+    const { userId, blockchainTxHash = null } = await req.json()
 
     if (!userId) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 })
@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
       targetUserId: userIdStr,
       patientId: user.userId,
       timestamp: new Date(),
-      blockchainTxHash: `0x${Math.random().toString(16).substr(2, 64)}`,
+      // Real hash from EHRAccess.revokeAccess() tx; null if chain call was skipped
+      blockchainTxHash: blockchainTxHash ?? undefined,
       metadata: {
         previousAccessLevel: permission.accessLevel,
       },

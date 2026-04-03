@@ -1,28 +1,22 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
+import { WalletLogin } from "@/components/wallet-login"
+import { useActiveAccount } from "thirdweb/react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Activity, UserCircle, FlaskConical, ShieldCheck, ArrowRight, Lock, CheckCircle2 } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Activity, UserCircle, FlaskConical, ShieldCheck, ArrowRight, Lock, CheckCircle2, AlertTriangle } from "lucide-react"
 
 export default function LandingPage() {
   const router = useRouter()
+  const account = useActiveAccount()
   const [showAuth, setShowAuth] = useState(false)
   const [selectedRole, setSelectedRole] = useState<"patient" | "doctor" | "lab" | "admin" | null>(null)
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    name: "",
-    specialization: "",
-    licenseNumber: "",
-  })
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  // Prevent the unified-auth call from firing more than once per wallet session
+  const authCalledRef = useRef(false)
 
   const roles = [
     {
@@ -66,232 +60,121 @@ export default function LandingPage() {
   const handleRoleSelect = (role: typeof selectedRole) => {
     setSelectedRole(role)
     setShowAuth(true)
-    setFormData({ email: "", password: "", name: "", specialization: "", licenseNumber: "" })
-  }
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
     setError("")
-    setLoading(true)
-
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-        }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.error || "Login failed")
-        setLoading(false)
-        return
-      }
-
-      // Store token
-      localStorage.setItem("token", data.token)
-      localStorage.setItem("user", JSON.stringify(data.user))
-
-      // Redirect based on role
-      const role = data.user.role
-      if (!data.user.isVerified && role !== "patient") {
-        setError("Your account is pending admin verification")
-        setLoading(false)
-        return
-      }
-
-      router.push(`/${role}`)
-    } catch (err) {
-      setError("Network error. Please try again.")
-      setLoading(false)
-    }
+    // Reset the guard so a new role selection can re-trigger
+    authCalledRef.current = false
   }
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // ─── Unified Auth Effect ───────────────────────────────────────────────────
+  // Fires whenever Thirdweb connects a wallet AND a role has been selected.
+  useEffect(() => {
+    if (!account?.address || !selectedRole || authCalledRef.current) return
+
+    authCalledRef.current = true
+    setLoading(true)
     setError("")
-    setLoading(true)
 
-    if (!selectedRole) {
-      setError("Please select a role")
-      setLoading(false)
-      return
-    }
+    const perform = async () => {
+      try {
+        // Thirdweb In-App Wallets expose the email via account.getEmail() on SDK v5.
+        // If unavailable we fall back to the address itself as a placeholder email.
+        const email =
+          typeof (account as any).getEmail === "function"
+            ? await (account as any).getEmail()
+            : `${account.address.toLowerCase()}@wallet.local`
 
-    try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          name: formData.name,
-          role: selectedRole,
-          specialization: formData.specialization,
-          licenseNumber: formData.licenseNumber,
-        }),
-      })
+        const res = await fetch("/api/auth/unified", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            blockchainAddress: account.address,
+            email,
+            role: selectedRole,
+          }),
+        })
 
-      const data = await res.json()
+        const data = await res.json()
 
-      if (!res.ok) {
-        setError(data.error || "Registration failed")
+        if (!res.ok) {
+          setError(data.error || "Authentication failed")
+          authCalledRef.current = false
+          return
+        }
+
+        localStorage.setItem("token", data.token)
+        localStorage.setItem("user", JSON.stringify(data.user))
+
+        if (data.needsProfileCompletion) {
+          router.push(`/${selectedRole}/complete-profile`)
+        } else {
+          router.push(`/${selectedRole}`)
+        }
+      } catch (err) {
+        setError("Network error. Please try again.")
+        authCalledRef.current = false
+      } finally {
         setLoading(false)
-        return
       }
-
-      if (data.needsVerification) {
-        alert("Account created successfully! Your account is pending admin verification.")
-        setShowAuth(false)
-        setSelectedRole(null)
-      } else {
-        alert("Account created successfully! Please login.")
-        // Switch to login tab
-      }
-      setLoading(false)
-    } catch (err) {
-      setError("Network error. Please try again.")
-      setLoading(false)
     }
-  }
+
+    perform()
+  }, [account, selectedRole, router])
 
   if (showAuth) {
+    const roleInfo = roles.find((r) => r.id === selectedRole)
+    const Icon = roleInfo?.icon ?? Activity
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-4">
         <Card className="w-full max-w-md shadow-xl">
           <CardHeader className="space-y-1">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-2xl font-bold">Welcome</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => setShowAuth(false)}>
-                Back
+              <CardTitle className="text-2xl font-bold">Sign In Securely</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setShowAuth(false); setSelectedRole(null); setError(""); authCalledRef.current = false }}
+              >
+                ← Back
               </Button>
             </div>
-            <CardDescription>Sign in or create an account to continue</CardDescription>
+            <CardDescription>
+              Connecting as{" "}
+              <span className="font-semibold capitalize">{selectedRole}</span> using your Web3 wallet
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="login" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="login">Login</TabsTrigger>
-                <TabsTrigger value="signup">Sign Up</TabsTrigger>
-              </TabsList>
-              <TabsContent value="login">
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
-                    <Input
-                      id="login-email"
-                      type="email"
-                      placeholder="user@example.com"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
-                    <Input
-                      id="login-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      required
-                    />
-                  </div>
-                  {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? "Signing in..." : "Sign In"}
-                  </Button>
-                </form>
-              </TabsContent>
-              <TabsContent value="signup">
-                <form onSubmit={handleSignup} className="space-y-4">
-                  {selectedRole && (
-                    <div className="text-sm bg-muted p-3 rounded-md">
-                      Registering as: <span className="font-semibold">{selectedRole}</span>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-name">Full Name</Label>
-                    <Input
-                      id="signup-name"
-                      placeholder="John Doe"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      placeholder="user@example.com"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      required
-                    />
-                  </div>
-                  {selectedRole === "doctor" && (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="specialization">Specialization</Label>
-                        <Input
-                          id="specialization"
-                          placeholder="e.g., Cardiology"
-                          value={formData.specialization}
-                          onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="license">License Number</Label>
-                        <Input
-                          id="license"
-                          placeholder="Medical license number"
-                          value={formData.licenseNumber}
-                          onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
-                        />
-                      </div>
-                    </>
-                  )}
-                  {selectedRole === "lab" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="lab-license">Lab License Number</Label>
-                      <Input
-                        id="lab-license"
-                        placeholder="Laboratory license number"
-                        value={formData.licenseNumber}
-                        onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
-                      />
-                    </div>
-                  )}
-                  {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
-                  <Button type="submit" className="w-full" disabled={loading || !selectedRole}>
-                    {loading ? "Creating account..." : "Create Account"}
-                  </Button>
-                  {(selectedRole === "doctor" || selectedRole === "lab") && (
-                    <div className="text-xs text-muted-foreground bg-muted p-3 rounded-md">
-                      Note: Your account will require admin verification before you can access the system.
-                    </div>
-                  )}
-                </form>
-              </TabsContent>
-            </Tabs>
+          <CardContent className="space-y-5">
+            {/* Role badge */}
+            {roleInfo && (
+              <div className={`flex items-center gap-3 p-3 rounded-lg ${roleInfo.bgColor}`}>
+                <Icon className={`h-5 w-5 ${roleInfo.color}`} />
+                <span className={`text-sm font-medium ${roleInfo.color}`}>{roleInfo.title} Portal</span>
+              </div>
+            )}
+
+            {/* Thirdweb passwordless login */}
+            <div className="flex justify-center">
+              <WalletLogin />
+            </div>
+
+            {/* Status feedback */}
+            {loading && (
+              <div className="text-sm text-muted-foreground text-center animate-pulse">
+                Authenticating wallet… please wait
+              </div>
+            )}
+
+            {error && (
+              <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                {error}
+              </div>
+            )}
+
+            {(selectedRole === "doctor" || selectedRole === "lab") && !loading && (
+              <div className="text-xs text-muted-foreground bg-muted p-3 rounded-md">
+                New Doctors &amp; Labs require admin verification. You will be redirected to complete your profile after sign-in.
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -309,22 +192,27 @@ export default function LandingPage() {
             </div>
             <span className="font-bold text-xl text-foreground">HealthChain</span>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setShowAuth(true)
-              setSelectedRole(null)
-            }}
-          >
-            <Lock className="mr-2 h-4 w-4" />
-            Sign In
-          </Button>
+          
+          {/* REPLACED: Web3 Seamless Login Button */}
+          <WalletLogin />
+          
         </div>
       </header>
 
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-20 text-center">
         <div className="max-w-4xl mx-auto space-y-6">
+          
+          {/* NEW: Show the wallet address if they logged in successfully! */}
+          {account && (
+            <div className="mb-8 p-4 bg-green-50 border border-green-200 rounded-lg inline-block animate-in fade-in slide-in-from-bottom-4 shadow-sm">
+              <p className="text-sm text-green-800 font-semibold mb-1">✅ Secure Web3 Wallet Generated!</p>
+              <code className="text-xs text-green-600 bg-white px-2 py-1 rounded border border-green-100 font-mono">
+                {account.address}
+              </code>
+            </div>
+          )}
+
           <h1 className="text-5xl md:text-6xl font-bold text-balance leading-tight">
             Secure Healthcare Records{" "}
             <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
