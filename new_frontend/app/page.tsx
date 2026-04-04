@@ -1,22 +1,14 @@
 "use client"
 
 import { WalletLogin } from "@/components/wallet-login"
-import { useActiveAccount } from "thirdweb/react"
-import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Activity, UserCircle, FlaskConical, ShieldCheck, ArrowRight, Lock, CheckCircle2, AlertTriangle } from "lucide-react"
+import { Activity, UserCircle, FlaskConical, ShieldCheck, ArrowRight, Lock, CheckCircle2 } from "lucide-react"
 
 export default function LandingPage() {
-  const router = useRouter()
-  const account = useActiveAccount()
   const [showAuth, setShowAuth] = useState(false)
   const [selectedRole, setSelectedRole] = useState<"patient" | "doctor" | "lab" | "admin" | null>(null)
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
-  // Prevent the unified-auth call from firing more than once per wallet session
-  const authCalledRef = useRef(false)
 
   const roles = [
     {
@@ -60,65 +52,7 @@ export default function LandingPage() {
   const handleRoleSelect = (role: typeof selectedRole) => {
     setSelectedRole(role)
     setShowAuth(true)
-    setError("")
-    // Reset the guard so a new role selection can re-trigger
-    authCalledRef.current = false
   }
-
-  // ─── Unified Auth Effect ───────────────────────────────────────────────────
-  // Fires whenever Thirdweb connects a wallet AND a role has been selected.
-  useEffect(() => {
-    if (!account?.address || !selectedRole || authCalledRef.current) return
-
-    authCalledRef.current = true
-    setLoading(true)
-    setError("")
-
-    const perform = async () => {
-      try {
-        // Thirdweb In-App Wallets expose the email via account.getEmail() on SDK v5.
-        // If unavailable we fall back to the address itself as a placeholder email.
-        const email =
-          typeof (account as any).getEmail === "function"
-            ? await (account as any).getEmail()
-            : `${account.address.toLowerCase()}@wallet.local`
-
-        const res = await fetch("/api/auth/unified", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            blockchainAddress: account.address,
-            email,
-            role: selectedRole,
-          }),
-        })
-
-        const data = await res.json()
-
-        if (!res.ok) {
-          setError(data.error || "Authentication failed")
-          authCalledRef.current = false
-          return
-        }
-
-        localStorage.setItem("token", data.token)
-        localStorage.setItem("user", JSON.stringify(data.user))
-
-        if (data.needsProfileCompletion) {
-          router.push("/complete-profile")
-        } else {
-          router.push(`/${selectedRole}`)
-        }
-      } catch (err) {
-        setError("Network error. Please try again.")
-        authCalledRef.current = false
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    perform()
-  }, [account, selectedRole, router])
 
   if (showAuth) {
     const roleInfo = roles.find((r) => r.id === selectedRole)
@@ -132,7 +66,7 @@ export default function LandingPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setShowAuth(false); setSelectedRole(null); setError(""); authCalledRef.current = false }}
+                onClick={() => { setShowAuth(false); setSelectedRole(null); }}
               >
                 ← Back
               </Button>
@@ -158,21 +92,7 @@ export default function LandingPage() {
             <WalletLogin role={selectedRole as "patient" | "doctor" | "lab" | "admin"} />
             </div>
 
-            {/* Status feedback */}
-            {loading && (
-              <div className="text-sm text-muted-foreground text-center animate-pulse">
-                Authenticating wallet… please wait
-              </div>
-            )}
-
-            {error && (
-              <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                {error}
-              </div>
-            )}
-
-            {(selectedRole === "doctor" || selectedRole === "lab") && !loading && (
+            {(selectedRole === "doctor" || selectedRole === "lab") && (
               <div className="text-xs text-muted-foreground bg-muted p-3 rounded-md">
                 New Doctors &amp; Labs require admin verification. You will be redirected to complete your profile after sign-in.
               </div>
@@ -205,15 +125,6 @@ export default function LandingPage() {
       <section className="container mx-auto px-4 py-20 text-center">
         <div className="max-w-4xl mx-auto space-y-6">
           
-          {/* NEW: Show the wallet address if they logged in successfully! */}
-          {account && (
-            <div className="mb-8 p-4 bg-green-50 border border-green-200 rounded-lg inline-block animate-in fade-in slide-in-from-bottom-4 shadow-sm">
-              <p className="text-sm text-green-800 font-semibold mb-1">✅ Secure Web3 Wallet Generated!</p>
-              <code className="text-xs text-green-600 bg-white px-2 py-1 rounded border border-green-100 font-mono">
-                {account.address}
-              </code>
-            </div>
-          )}
 
           <h1 className="text-5xl md:text-6xl font-bold text-balance leading-tight">
             Secure Healthcare Records{" "}

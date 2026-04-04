@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react"
 import { createThirdwebClient } from "thirdweb"
-import { ConnectButton } from "thirdweb/react"
+import { useConnectModal } from "thirdweb/react"
 import { inAppWallet } from "thirdweb/wallets"
 import { useRouter } from "next/navigation"
 import { generateEncryptionKeyPair, savePrivateKey, hasPrivateKey } from "@/lib/crypto"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
+import { Loader2 } from "lucide-react"
 
 const client = createThirdwebClient({
   clientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID as string,
@@ -22,6 +23,7 @@ interface WalletLoginProps {
 export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
   const router = useRouter()
   const { toast } = useToast()
+  const { connect, isConnecting } = useConnectModal()
   const [status, setStatus] = useState<"idle" | "authenticating" | "done">("idle")
   const [error, setError] = useState<string | null>(null)
   /**
@@ -42,9 +44,23 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
    * 4. Pushes public key to /api/auth/unified (second call, lightweight)
    * 5. Redirects to role dashboard
    */
-  const handleConnect = async (wallet: any) => {
-    setStatus("authenticating")
+  const handleSignIn = async () => {
     setError(null)
+
+    let wallet: any
+    try {
+      // Open the Thirdweb connect modal – resolves when user finishes auth
+      wallet = await connect({
+        client,
+        wallets,
+      })
+    } catch (err: any) {
+      // User closed the modal or cancelled — not a critical error
+      console.log("[WalletLogin] Connect modal dismissed:", err?.message)
+      return
+    }
+
+    setStatus("authenticating")
 
     try {
       const account = wallet.getAccount()
@@ -58,7 +74,7 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           blockchainAddress: walletAddress,
-          email: null, // Thirdweb will have set this during OAuth — backend derives from wallet
+          email: null, // backend derives email from the wallet record
           role,
         }),
       })
@@ -116,6 +132,8 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
       localStorage.removeItem("user")
     }
   }
+
+  const busy = isConnecting || status === "authenticating"
 
   return (
     <div className="flex flex-col items-center gap-3 w-full max-w-sm">
