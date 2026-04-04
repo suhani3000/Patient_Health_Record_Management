@@ -95,6 +95,7 @@ import { getDatabase } from "@/lib/db/mongo"
 import { requireVerified } from "@/lib/auth/middleware"
 import type { MedicalRecord, AccessPermission, AuditLog } from "@/lib/db/models"
 import { ObjectId } from "mongodb"
+import { pinFileToIPFS } from "@/lib/ipfs"
 
 export const runtime = "nodejs"
 
@@ -136,13 +137,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No upload permission for this patient" }, { status: 403 })
     }
 
-    // For now, use mock CID (add Pinata integration later)
     const fileHash = `sha256_${Buffer.from(fileName + Date.now()).toString("base64")}`
-    const fileCID = `mock_cid_${Date.now()}`
-    const fileUrl = `/uploads/${patientId}/${Date.now()}_${fileName}`
 
-    // Convert file to buffer (for demo)
     const buffer = Buffer.from(await file.arrayBuffer())
+    const cid = await pinFileToIPFS(buffer, fileName)
+    if (!cid) {
+      throw new Error("IPFS upload did not return a CID")
+    }
+    const fileCID = cid
+    const fileUrl = `ipfs://${cid}`
 
     const newRecord: Omit<MedicalRecord, "_id"> = {
       patientId: new ObjectId(patientId),

@@ -14,7 +14,7 @@ export const runtime = "nodejs"
  *
  * Response:
  *   - { token, user }                              — for returning users
- *   - { token, user, needsProfileCompletion: true } — for new Doctor/Lab registrations
+ *   - { token, user, needsProfileCompletion: true } — for all new registrations (universal intake)
  */
 export async function POST(req: NextRequest) {
   try {
@@ -76,11 +76,13 @@ export async function POST(req: NextRequest) {
         )
       }
 
+      let resolvedEncryptionPublicKey = existingUser.encryptionPublicKey
       if (encryptionPublicKey && !existingUser.encryptionPublicKey) {
         await usersCollection.updateOne(
           { _id: existingUser._id },
           { $set: { encryptionPublicKey } }
         )
+        resolvedEncryptionPublicKey = encryptionPublicKey
       }
 
       const token = generateToken({
@@ -101,6 +103,7 @@ export async function POST(req: NextRequest) {
           role: existingUser.role,
           isVerified: existingUser.isVerified,
           blockchainAddress: existingUser.blockchainAddress,
+          encryptionPublicKey: resolvedEncryptionPublicKey ?? null,
         },
         needsProfileCompletion: false,
       })
@@ -113,26 +116,23 @@ export async function POST(req: NextRequest) {
     //   - Doctor   → isVerified: false (needs admin approval)
     //   - Lab      → isVerified: false (needs admin approval)
     //
-    const isNewDoctor = role === "doctor"
-    const isNewLab = role === "lab"
-
     // Derive a friendly display name from the email (before the @) or use the address.
     const displayName = email
       ? email.split("@")[0].replace(/[._+-]/g, " ")
       : `Wallet_${normalizedAddress.slice(2, 8)}`
 
-      const newUser: Omit<User, "_id"> = {
-        email: email ?? `${normalizedAddress}@wallet.local`,
-        password: "",
-        name: displayName,
-        role: role as User["role"],
-        isVerified: role === "patient",
-        isBlocked: false,
-        blockchainAddress: normalizedAddress,
-        encryptionPublicKey: encryptionPublicKey ?? undefined,  // ← ADD THIS LINE
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }
+    const newUser: Omit<User, "_id"> = {
+      email: email ?? `${normalizedAddress}@wallet.local`,
+      password: "",
+      name: displayName,
+      role: role as User["role"],
+      isVerified: role === "patient",
+      isBlocked: false,
+      blockchainAddress: normalizedAddress,
+      encryptionPublicKey: encryptionPublicKey ?? undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
 
     const result = await usersCollection.insertOne(newUser as any)
 
@@ -155,9 +155,9 @@ export async function POST(req: NextRequest) {
           role: newUser.role,
           isVerified: newUser.isVerified,
           blockchainAddress: newUser.blockchainAddress,
+          encryptionPublicKey: newUser.encryptionPublicKey ?? null,
         },
-        // New Doctors and Labs must complete their profile (name, specialization, licenseNumber)
-        needsProfileCompletion: isNewDoctor || isNewLab,
+        needsProfileCompletion: true,
       },
       { status: 201 }
     )

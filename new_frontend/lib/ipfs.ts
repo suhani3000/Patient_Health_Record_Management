@@ -51,3 +51,12 @@ export async function uploadFileToIPFS(
     throw err
   }
 }
+
+/** Pin a file to IPFS via Pinata; returns the CID string or throws if missing. */
+export async function pinFileToIPFS(buffer: Buffer, fileName: string): Promise<string> {
+  const result = await uploadFileToIPFS(buffer, fileName)
+  if (!result?.cid) {
+    throw new Error("Pinata did not return a CID")
+  }
+  return result.cid
+}

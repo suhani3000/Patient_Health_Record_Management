@@ -17,6 +17,10 @@ export interface User {
   updatedAt: Date
   blockchainAddress?: string // Thirdweb In-App Wallet address (unique, sparse index in MongoDB)
   encryptionPublicKey?: string
+  /** Patient profile — set during universal intake */
+  dateOfBirth?: string
+  bloodType?: string
+  emergencyContact?: string
 }
 
 // export interface MedicalRecord {

@@ -24,7 +24,7 @@ export const thirdwebClient = createThirdwebClient({
 
 // ── Local Hardhat / Quorum Chain ──────────────────────────────────────────────
 export const localChain = defineChain({
-  id: 1337,
+  id: 31337,
   rpc: "http://127.0.0.1:8545",
   nativeCurrency: {
     name: "Ether",

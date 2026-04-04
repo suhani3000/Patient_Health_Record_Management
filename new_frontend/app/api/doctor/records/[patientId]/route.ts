@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireVerified } from "@/lib/auth/middleware"
-import type { MedicalRecord, AccessPermission, AuditLog } from "@/lib/db/models"
+import type { MedicalRecord, AccessPermission, AuditLog, User } from "@/lib/db/models"
 import { ObjectId } from "mongodb"
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ patientId: string }> }) {
@@ -17,6 +17,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ pati
     const permissionsCollection = db.collection<AccessPermission>("accessPermissions")
     const recordsCollection = db.collection<MedicalRecord>("medicalRecords")
     const auditLogsCollection = db.collection<AuditLog>("auditLogs")
+    const usersCollection = db.collection<User>("users")
+
+    const doctorDoc = await usersCollection.findOne({
+      _id: new ObjectId(user.userId),
+    })
+    const doctorChain = doctorDoc?.blockchainAddress?.toLowerCase() ?? ""
 
     const patientObjectId = ObjectId.isValid(patientId) ? new ObjectId(patientId) : null
     if (!patientObjectId) {
@@ -53,7 +59,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ pati
 
     await auditLogsCollection.insertOne(auditLog as any)
 
-    return NextResponse.json({ records }, { status: 200 })
+    const mapped = records.map((rec) => {
+      const keys = rec.doctorKeys ?? {}
+      const myEncryptedAESKey =
+        doctorChain && keys[doctorChain] ? keys[doctorChain] : undefined
+      return {
+        ...rec,
+        myEncryptedAESKey,
+      }
+    })
+
+    return NextResponse.json({ records: mapped }, { status: 200 })
   } catch (error: any) {
     console.error("[Doctor Records API] Error:", error)
     if (error.message === "Unauthorized" || error.message.includes("Forbidden") || error.message.includes("verified")) {

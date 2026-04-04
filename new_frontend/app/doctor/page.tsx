@@ -246,10 +246,11 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Users, LogOut, ChevronRight, Download, Upload, Plus } from "lucide-react"
+import { FileText, Users, LogOut, ChevronRight, Upload } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
@@ -269,7 +270,6 @@ export default function DoctorDashboard() {
   const [user, setUser] = useState<any>(null)
   const [patients, setPatients] = useState<any[]>([])
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null)
-  const [records, setRecords] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [canUpload, setCanUpload] = useState(false)
   
@@ -337,34 +337,12 @@ export default function DoctorDashboard() {
     setLoading(false)
   }
 
-  const handleSelectPatient = async (patient: any) => {
+  const handleSelectPatient = (patient: any) => {
     setSelectedPatient(patient)
-    setRecords([])
 
-    // Check if doctor can upload to this patient
-    const canUploadToPatient = patient.accessLevel?.includes("upload") || 
-                               patient.accessLevel === "view-upload"
+    const canUploadToPatient =
+      patient.accessLevel?.includes("upload") || patient.accessLevel === "view-upload"
     setCanUpload(canUploadToPatient)
-
-    try {
-      const res = await fetch(`/api/doctor/records/${patient.patientId}`, {
-        headers: getAuthHeaders(),
-      })
-
-      if (!res.ok) {
-        throw new Error("Failed to load records")
-      }
-
-      const data = await res.json()
-      setRecords(data.records || [])
-    } catch (error) {
-      console.error("Error loading records:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load patient records.",
-        variant: "destructive",
-      })
-    }
   }
 
   const handleUpload = async () => {
@@ -421,9 +399,6 @@ export default function DoctorDashboard() {
       })
       setSelectedFile(null)
       setShowUploadDialog(false)
-
-      // Refresh records
-      handleSelectPatient(selectedPatient)
     } catch (error: any) {
       toast({
         title: "Error",
@@ -547,14 +522,24 @@ export default function DoctorDashboard() {
             <>
               {/* Patient Header with Upload Button */}
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
+                <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
                   <div>
                     <CardTitle>Medical Records - {selectedPatient.patientName}</CardTitle>
                     <CardDescription>
-                      View patient medical records
-                      {canUpload && " • You can upload records for this patient"}
+                      Open the encrypted records page to view and decrypt files in your browser.
+                      {canUpload && " You can upload records for this patient from here."}
                     </CardDescription>
                   </div>
+
+
+                  <Button asChild className="gap-2 shrink-0">
+                    <Link
+                      href={`/doctor/records/${encodeURIComponent(selectedPatient.patientId)}?name=${encodeURIComponent(selectedPatient.patientName || "")}`}
+                    >
+                      View &amp; decrypt records
+                    </Link>
+                  </Button>
+
                   
                   {/* Upload Button (only show if doctor has upload permission) */}
                   {canUpload && (
@@ -624,49 +609,6 @@ export default function DoctorDashboard() {
                 </CardHeader>
               </Card>
 
-              {/* Records List */}
-              <Card>
-                <CardContent className="pt-6">
-                  {records.length === 0 ? (
-                    <div className="text-center py-8">
-                      <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-                      <p className="mt-4 text-muted-foreground">No records available for this patient</p>
-                      {canUpload && (
-                        <p className="text-sm text-muted-foreground mt-2">
-                          You can upload the first record using the button above
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {records.map((record) => (
-                        <div key={record._id} className="flex items-center justify-between rounded-lg border p-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <FileText className="h-4 w-4 text-muted-foreground" />
-                              <span className="font-medium">{record.fileName}</span>
-                              <Badge variant="secondary">{record.recordType}</Badge>
-                              {record.uploaderRole === "doctor" && (
-                                <Badge variant="outline" className="text-xs">
-                                  Uploaded by you
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              Uploaded on {new Date(record.uploadDate).toLocaleDateString()}
-                              {record.metadata?.description && ` • ${record.metadata.description}`}
-                            </p>
-                          </div>
-                          <Button variant="ghost" size="sm" className="gap-2">
-                            <Download className="h-4 w-4" />
-                            View
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
             </>
           )}
         </div>

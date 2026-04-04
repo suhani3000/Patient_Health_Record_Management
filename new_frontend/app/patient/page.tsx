@@ -557,15 +557,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FileText, Users, History, LogOut, Download, Upload, UserPlus, Loader2 } from "lucide-react"
+import { FileText, Users, History, LogOut, Download, UserPlus, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { UploadDialog } from "@/components/patient/upload-dialog"
 
 export default function PatientDashboard() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const router = useRouter()
   const { toast } = useToast()
   const [user, setUser] = useState<any>(null)
@@ -574,14 +573,6 @@ export default function PatientDashboard() {
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [availableProviders, setAvailableProviders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
-
-  const [showUpload, setShowUpload] = useState(false)
-  const [uploadData, setUploadData] = useState({
-    fileName: "",
-    recordType: "Lab Report",
-    description: "",
-  })
 
   const [showGrant, setShowGrant] = useState(false)
   const [grantData, setGrantData] = useState({
@@ -800,25 +791,23 @@ export default function PatientDashboard() {
   }
 
   const handleDownload = (record: any) => {
-    toast({
-      title: "Downloading",
-      description: `Downloading ${record.fileName}`,
-    })
-    // In production, you would fetch the file from IPFS/CDN
-    // window.open(record.fileUrl, '_blank')
-  }
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null
-    setSelectedFile(file)
-    
-    // Auto-fill file name if not set
-    if (file && !uploadData.fileName) {
-      setUploadData(prev => ({
-        ...prev,
-        fileName: file.name.replace(/\.[^/.]+$/, "") // Remove extension
-      }))
+    if (!record.cid) {
+      toast({
+        title: "Error",
+        description: "This record hasn't been uploaded to IPFS yet.",
+        variant: "destructive"
+      })
+      return
     }
+
+    toast({
+      title: "Opening Record",
+      description: `Fetching ${record.fileName} from IPFS...`,
+    })
+    
+    // Construct the Pinata Gateway URL using the CID
+    const ipfsUrl = `https://gateway.pinata.cloud/ipfs/${record.cid}`
+    window.open(ipfsUrl, '_blank')
   }
 
   if (loading) {
@@ -863,83 +852,7 @@ export default function PatientDashboard() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="mb-6 flex flex-wrap gap-4">
-          <Dialog open={showUpload} onOpenChange={setShowUpload}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Upload className="h-4 w-4" />
-                Upload Record
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Upload Medical Record</DialogTitle>
-                <DialogDescription>Add a new medical record to your health profile</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fileName">File Name *</Label>
-                  <Input
-                    id="fileName"
-                    placeholder="e.g., Blood Test Results.pdf"
-                    value={uploadData.fileName}
-                    onChange={(e) => setUploadData({ ...uploadData, fileName: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="recordType">Record Type *</Label>
-                  <Input
-                    id="recordType"
-                    placeholder="e.g., Lab Report, X-Ray, Prescription"
-                    value={uploadData.recordType}
-                    onChange={(e) => setUploadData({ ...uploadData, recordType: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="file">Upload File *</Label>
-                  <Input
-                    id="file"
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                    onChange={handleFileSelect}
-                    required
-                  />
-                  {selectedFile && (
-                    <p className="text-xs text-muted-foreground">
-                      Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description (Optional)</Label>
-                  <Input
-                    id="description"
-                    placeholder="Brief description..."
-                    value={uploadData.description}
-                    onChange={(e) => setUploadData({ ...uploadData, description: e.target.value })}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowUpload(false)} disabled={uploading}>
-                  Cancel
-                </Button>
-                <Button onClick={handleUpload} disabled={uploading}>
-                  {uploading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    "Upload"
-                  )}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <UploadDialog onUploadSuccess={loadData} />
 
           <Dialog open={showGrant} onOpenChange={setShowGrant}>
             <DialogTrigger asChild>
@@ -1030,14 +943,9 @@ export default function PatientDashboard() {
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
                     <p className="text-muted-foreground">No records uploaded yet</p>
-                    <Button 
-                      onClick={() => setShowUpload(true)} 
-                      className="mt-4 gap-2"
-                      variant="outline"
-                    >
-                      <Upload className="h-4 w-4" />
-                      Upload Your First Record
-                    </Button>
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      Use <span className="font-medium text-foreground">Upload Record</span> above to add your first encrypted file.
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-3">

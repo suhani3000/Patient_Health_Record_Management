@@ -2,10 +2,11 @@
 
 import { useState } from "react"
 import { createThirdwebClient } from "thirdweb"
-import { ConnectButton, useActiveAccount, useDisconnect, useActiveWallet } from "thirdweb/react"
+import { ConnectButton } from "thirdweb/react"
 import { inAppWallet } from "thirdweb/wallets"
 import { useRouter } from "next/navigation"
 import { generateEncryptionKeyPair, savePrivateKey, hasPrivateKey } from "@/lib/crypto"
+import { useToast } from "@/hooks/use-toast"
 
 const client = createThirdwebClient({
   clientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID as string,
@@ -25,6 +26,7 @@ interface WalletLoginProps {
 
 export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const [status, setStatus] = useState<"idle" | "authenticating" | "done">("idle")
   const [error, setError] = useState<string | null>(null)
 
@@ -60,36 +62,46 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
       const authData = await authRes.json()
       if (!authRes.ok) throw new Error(authData.error || "Authentication failed")
 
-      const { token, user } = authData
+      const { token, user, needsProfileCompletion } = authData
 
       // ── Step 2: Store JWT ──────────────────────────────────────────────────
       localStorage.setItem("token", token)
       localStorage.setItem("user", JSON.stringify(user))
 
-      // ── Step 3: Generate encryption keypair if first time on this device ──
+      // ── Step 3: Encryption key — new device with existing server key must import recovery key ──
       if (!hasPrivateKey(walletAddress)) {
-        const { publicKeyB64, privateKeyJwk } = await generateEncryptionKeyPair()
-        savePrivateKey(walletAddress, privateKeyJwk)
+        if (user.encryptionPublicKey) {
+          toast({
+            title: "New device detected",
+            description:
+              "Open /security (Security & recovery) and import your Recovery Key to decrypt existing records.",
+            variant: "destructive",
+            duration: 12_000,
+          })
+        } else {
+          const { publicKeyB64, privateKeyJwk } = await generateEncryptionKeyPair()
+          savePrivateKey(walletAddress, privateKeyJwk)
 
-        // ── Step 4: Push public key to backend ────────────────────────────
-        // We call unified again — it will find the existing user (returning user path)
-        // and set encryptionPublicKey if it isn't already set
-        await fetch("/api/auth/unified", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            blockchainAddress: walletAddress,
-            role,
-            encryptionPublicKey: publicKeyB64,
-          }),
-        })
-        // No need to update the stored token — the public key doesn't affect JWT claims
+          await fetch("/api/auth/unified", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              blockchainAddress: walletAddress,
+              role,
+              encryptionPublicKey: publicKeyB64,
+            }),
+          })
+        }
       }
 
-      // ── Step 5: Notify parent + redirect ──────────────────────────────────
+      // ── Step 4: Notify parent + redirect ──────────────────────────────────
       setStatus("done")
       onLoginSuccess?.(user)
-      router.push(`/${role}`)
+      if (needsProfileCompletion) {
+        router.push("/complete-profile")
+      } else {
+        router.push(`/${role}`)
+      }
 
     } catch (err: any) {
       console.error("[WalletLogin] Post-connect error:", err)

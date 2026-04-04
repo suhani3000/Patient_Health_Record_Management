@@ -128,7 +128,11 @@ export function GrantAccessDialog({ onGrantSuccess, fileId = 0 }: GrantAccessDia
           headers: { Authorization: `Bearer ${token}` },
         })
         const recordsData = await recordsRes.json()
-        const records: Record[] = recordsData.records ?? []
+        let records: Record[] = recordsData.records ?? []
+
+        if (fileId > 0) {
+          records = records.filter((r) => Number(r.fileId) === fileId)
+        }
 
         for (const rec of records) {
           if (!rec.encryptedAESKey) continue

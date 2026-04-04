@@ -105,7 +105,7 @@ export default function LandingPage() {
         localStorage.setItem("user", JSON.stringify(data.user))
 
         if (data.needsProfileCompletion) {
-          router.push(`/${selectedRole}/complete-profile`)
+          router.push("/complete-profile")
         } else {
           router.push(`/${selectedRole}`)
         }
