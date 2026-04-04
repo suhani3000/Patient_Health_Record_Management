@@ -250,7 +250,7 @@ import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Users, LogOut, ChevronRight, Upload } from "lucide-react"
+import { FileText, Users, LogOut, ChevronRight, Upload, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
@@ -263,6 +263,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { encryptFile, wrapAESKey } from "@/lib/crypto"
 
 export default function DoctorDashboard() {
   const router = useRouter()
@@ -364,15 +365,58 @@ export default function DoctorDashboard() {
       return
     }
 
-    const formData = new FormData()
-    formData.append("file", selectedFile)
-    formData.append("patientId", selectedPatient.patientId)
-    formData.append("fileName", uploadData.fileName)
-    formData.append("recordType", uploadData.recordType)
-    formData.append("description", uploadData.description)
-    formData.append("fileType", selectedFile.type || "application/pdf")
+    if (!selectedPatient.patientEncryptionPublicKey) {
+      toast({
+        title: "Cannot upload encrypted file",
+        description:
+          "This patient has no RSA public key on file. They must sign in once so encryption can be set up.",
+        variant: "destructive",
+      })
+      return
+    }
 
     try {
+      const fileBuffer = await selectedFile.arrayBuffer()
+      const { encryptedBuffer, aesKeyRaw, ivB64 } = await encryptFile(fileBuffer)
+      const encryptedAESKey = await wrapAESKey(
+        aesKeyRaw,
+        selectedPatient.patientEncryptionPublicKey as string,
+      )
+
+      const token = localStorage.getItem("token")
+      let doctorEncryptedAESKey: string | null = null
+      if (token) {
+        try {
+          const meRes = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+          if (meRes.ok) {
+            const meData = await meRes.json()
+            const doctorPub = meData.user?.encryptionPublicKey as string | undefined
+            if (doctorPub) {
+              doctorEncryptedAESKey = await wrapAESKey(aesKeyRaw, doctorPub)
+            }
+          }
+        } catch {
+          console.warn("[Doctor upload] Could not wrap AES key for doctor copy")
+        }
+      }
+
+      const encBlob = new Blob([encryptedBuffer], { type: "application/octet-stream" })
+      const baseName = (uploadData.fileName || selectedFile.name).replace(/\.enc$/i, "")
+      const encryptedFile = new File([encBlob], `${baseName}.enc`)
+
+      const formData = new FormData()
+      formData.append("file", encryptedFile)
+      formData.append("patientId", String(selectedPatient.patientId))
+      formData.append("fileName", uploadData.fileName || selectedFile.name)
+      formData.append("recordType", uploadData.recordType)
+      formData.append("description", uploadData.description)
+      formData.append("fileType", selectedFile.type || "application/octet-stream")
+      formData.append("encryptedAESKey", encryptedAESKey)
+      formData.append("aesIV", ivB64)
+      if (doctorEncryptedAESKey) {
+        formData.append("doctorEncryptedAESKey", doctorEncryptedAESKey)
+      }
+
       const res = await fetch("/api/doctor/upload", {
         method: "POST",
         headers: getAuthHeaders(),
@@ -407,6 +451,7 @@ export default function DoctorDashboard() {
       })
     }
   }
+
 
   const handleLogout = () => {
     localStorage.removeItem("token")
@@ -558,6 +603,15 @@ export default function DoctorDashboard() {
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
+                          {!selectedPatient.patientEncryptionPublicKey && (
+                            <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded-md">
+                              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                              <span>
+                                This patient has no encryption public key on file. They must sign in at least once
+                                with a device that registers their key before you can upload.
+                              </span>
+                            </div>
+                          )}
                           <div className="space-y-2">
                             <Label htmlFor="fileName">File Name</Label>
                             <Input
@@ -599,8 +653,11 @@ export default function DoctorDashboard() {
                           <Button variant="outline" onClick={() => setShowUploadDialog(false)}>
                             Cancel
                           </Button>
-                          <Button onClick={handleUpload} disabled={!selectedFile}>
-                            Upload
+                          <Button
+                            onClick={handleUpload}
+                            disabled={!selectedFile || !selectedPatient.patientEncryptionPublicKey}
+                          >
+                            Upload (encrypted for patient)
                           </Button>
                         </DialogFooter>
                       </DialogContent>

@@ -9,7 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Eye, FileText, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { decryptFile, unwrapAESKey } from "@/lib/crypto"
+import {
+  normalizeRecordForDecryption,
+  resolveWalletAddressForCrypto,
+  fetchDecryptAndOpen,
+  ipfsGatewayUrl,
+  coerceCryptoString,
+} from "@/lib/view-encrypted-record"
 
 interface DoctorRecord {
   _id: string | { toString?: () => string }
@@ -39,7 +45,15 @@ export default function DoctorPatientRecordsPage() {
   const [loading, setLoading] = useState(true)
   const [decryptingId, setDecryptingId] = useState<string | null>(null)
 
-  const doctorAddress = account?.address?.toLowerCase() ?? ""
+  const profileChainAddress = (() => {
+    try {
+      const raw = localStorage.getItem("user")
+      if (!raw) return undefined
+      return JSON.parse(raw).blockchainAddress as string | undefined
+    } catch {
+      return undefined
+    }
+  })()
 
   const loadRecords = useCallback(async () => {
     const token = localStorage.getItem("token")
@@ -87,49 +101,64 @@ export default function DoctorPatientRecordsPage() {
   const recordIdStr = (r: DoctorRecord) => String(r._id)
 
   const handleViewRecord = async (record: DoctorRecord) => {
-    if (!doctorAddress) {
+    const walletAddress = resolveWalletAddressForCrypto(account?.address, profileChainAddress)
+
+    if (!walletAddress) {
       toast({
-        title: "Wallet required",
-        description: "Connect your wallet to decrypt files.",
+        title: "Wallet address unavailable",
+        description: "Reconnect from the home page so your wallet matches your profile, or check /security for your key.",
         variant: "destructive",
       })
-      return
-    }
-    if (!record.myEncryptedAESKey) {
-      toast({
-        title: "No encryption key for this record",
-        description: "The patient may need to grant access again so keys can be shared.",
-        variant: "destructive",
-      })
-      return
-    }
-    if (!record.aesIV) {
-      toast({ title: "Missing IV", description: "This record cannot be decrypted.", variant: "destructive" })
       return
     }
 
-    const cid = record.cid || record.fileCID
+    const norm = normalizeRecordForDecryption(record)
+    const cid = norm?.cid
+    const wrappedKey = coerceCryptoString(record.myEncryptedAESKey)
+    const iv = norm?.aesIV
+    const fileType = norm?.fileType || record.fileType?.trim() || "application/octet-stream"
+
     if (!cid) {
-      toast({ title: "Missing file reference", description: "No IPFS CID on this record.", variant: "destructive" })
+      toast({
+        title: "Missing file reference",
+        description: "No IPFS CID on this record (checked cid / fileCID).",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!wrappedKey || !iv) {
+      if (!wrappedKey && cid) {
+        toast({
+          title: "No key shared — opening raw IPFS",
+          description: "You will see ciphertext unless the patient re-grants access with key sharing.",
+          duration: 6000,
+        })
+        window.open(ipfsGatewayUrl(cid), "_blank", "noopener,noreferrer")
+        return
+      }
+      if (!wrappedKey) {
+        toast({
+          title: "No encryption key for this record",
+          description: "Ask the patient to grant access again so your wrapped AES key is stored.",
+          variant: "destructive",
+        })
+      } else {
+        toast({ title: "Missing IV", description: "This record cannot be decrypted.", variant: "destructive" })
+      }
       return
     }
 
     setDecryptingId(recordIdStr(record))
     try {
-      const aesKeyRaw = await unwrapAESKey(record.myEncryptedAESKey, doctorAddress)
-
-      const gatewayUrl = `https://gateway.pinata.cloud/ipfs/${cid}`
-      const fileRes = await fetch(gatewayUrl)
-      if (!fileRes.ok) throw new Error(`Gateway error (${fileRes.status})`)
-
-      const ciphertextBuffer = await fileRes.arrayBuffer()
-      const plain = await decryptFile(ciphertextBuffer, aesKeyRaw, record.aesIV)
-
-      const mime = record.fileType?.trim() || "application/octet-stream"
-      const blob = new Blob([plain], { type: mime })
-      const url = URL.createObjectURL(blob)
-      window.open(url, "_blank", "noopener,noreferrer")
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      await fetchDecryptAndOpen({
+        cid,
+        wrappedKeyB64: wrappedKey,
+        aesIV: iv,
+        fileType,
+        walletAddressLower: walletAddress,
+        displayFileName: record.fileName || "record",
+      })
     } catch (err: any) {
       console.error("[ViewRecord]", err)
       toast({

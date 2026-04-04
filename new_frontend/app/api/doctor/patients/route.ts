@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
           patientId: p.patientId,
           patientName: patient?.name || "Unknown",
           patientEmail: patient?.email || "Unknown",
+          patientEncryptionPublicKey: patient?.encryptionPublicKey ?? null,
           accessLevel: p.accessLevel,
           grantedAt: p.grantedAt,
         }

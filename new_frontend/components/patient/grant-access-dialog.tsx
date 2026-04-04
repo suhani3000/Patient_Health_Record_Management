@@ -14,7 +14,14 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserPlus, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { thirdwebClient, localChain, EHRAccessABI, EHR_ACCESS_ADDRESS, toAccessTypeUint } from "@/lib/contracts"
+import {
+  thirdwebClient,
+  localChain,
+  EHRAccessABI,
+  EHR_ACCESS_ADDRESS,
+  EHR_ACCESS_ADDRESS_DEPLOYED,
+  toAccessTypeUint,
+} from "@/lib/contracts"
 import { unwrapAESKey, wrapAESKey } from "@/lib/crypto"
 
 interface User {
@@ -27,7 +34,7 @@ interface User {
   encryptionPublicKey?: string  // ← needed to re-encrypt AES key for doctor
 }
 
-interface Record {
+interface PatientRecordRow {
   _id: string
   encryptedAESKey?: string
   fileId?: number
@@ -82,25 +89,35 @@ export function GrantAccessDialog({ onGrantSuccess, fileId = 0 }: GrantAccessDia
     // ── Step 1: On-chain grantAccess ─────────────────────────────────────────
     setStage("Signing blockchain transaction…")
     const doctorAddress = doctorUser?.blockchainAddress
+    const accessAddr = EHR_ACCESS_ADDRESS_DEPLOYED
+    const doctorHex =
+      doctorAddress &&
+      doctorAddress.startsWith("0x") &&
+      doctorAddress.length === 42 &&
+      /^0x[a-fA-F0-9]{40}$/.test(doctorAddress)
+        ? (doctorAddress as `0x${string}`)
+        : undefined
 
-    if (!account || !EHR_ACCESS_ADDRESS || !doctorAddress) {
+    if (!account || !accessAddr || !doctorHex) {
       blockchainWarning = true
     } else {
+      const activeAccount = account
+      const accessContractAddr = accessAddr satisfies `0x${string}`
       try {
         const contract = getContract({
           client: thirdwebClient, chain: localChain,
-          address: EHR_ACCESS_ADDRESS, abi: EHRAccessABI,
+          address: accessContractAddr, abi: EHRAccessABI,
         })
         const tx = prepareContractCall({
           contract,
           method: "grantAccess",
           params: [
-            doctorAddress as `0x${string}`,
+            doctorHex,
             BigInt(fileId),
             toAccessTypeUint(accessLevel as "view" | "upload" | "view-upload"),
           ],
         })
-        const result = await sendTransaction({ transaction: tx, account })
+        const result = await sendTransaction({ transaction: tx, account: activeAccount })
         const receipt = await waitForReceipt({
           client: thirdwebClient, chain: localChain,
           transactionHash: result.transactionHash,
@@ -128,7 +145,7 @@ export function GrantAccessDialog({ onGrantSuccess, fileId = 0 }: GrantAccessDia
           headers: { Authorization: `Bearer ${token}` },
         })
         const recordsData = await recordsRes.json()
-        let records: Record[] = recordsData.records ?? []
+        let records: PatientRecordRow[] = recordsData.records ?? []
 
         if (fileId > 0) {
           records = records.filter((r) => Number(r.fileId) === fileId)

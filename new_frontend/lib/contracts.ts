@@ -34,11 +34,28 @@ export const localChain = defineChain({
 })
 
 // ── Contract Addresses (from environment) ─────────────────────────────────────
+/** True when env holds a 40-hex EVM address (safe for Thirdweb `getContract`). */
+export function parseDeployedAddress(value: string | undefined): `0x${string}` | undefined {
+  if (!value || typeof value !== "string") return undefined
+  const t = value.trim()
+  if (!/^0x[a-fA-F0-9]{40}$/.test(t)) return undefined
+  return t as `0x${string}`
+}
+
 export const EHR_REGISTRY_ADDRESS =
   (process.env.NEXT_PUBLIC_EHR_REGISTRY_ADDRESS ?? "") as `0x${string}`
 
 export const EHR_ACCESS_ADDRESS =
   (process.env.NEXT_PUBLIC_EHR_ACCESS_ADDRESS ?? "") as `0x${string}`
+
+/** Use with `getContract` / comparisons — undefined if env missing or invalid. */
+export const EHR_REGISTRY_ADDRESS_DEPLOYED = parseDeployedAddress(
+  process.env.NEXT_PUBLIC_EHR_REGISTRY_ADDRESS,
+)
+
+export const EHR_ACCESS_ADDRESS_DEPLOYED = parseDeployedAddress(
+  process.env.NEXT_PUBLIC_EHR_ACCESS_ADDRESS,
+)
 
 // ── EHRRegistry ABI ───────────────────────────────────────────────────────────
 // Source: blockchain/contracts/EHRRegistry.sol

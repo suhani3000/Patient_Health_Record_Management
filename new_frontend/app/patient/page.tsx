@@ -544,6 +544,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useActiveAccount } from "thirdweb/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -559,13 +560,20 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FileText, Users, History, LogOut, Download, UserPlus, Loader2 } from "lucide-react"
+import { FileText, Users, History, LogOut, Eye, UserPlus, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { UploadDialog } from "@/components/patient/upload-dialog"
+import {
+  normalizeRecordForDecryption,
+  resolveWalletAddressForCrypto,
+  fetchDecryptAndOpen,
+  ipfsGatewayUrl,
+} from "@/lib/view-encrypted-record"
 
 export default function PatientDashboard() {
   const router = useRouter()
+  const account = useActiveAccount()
   const { toast } = useToast()
   const [user, setUser] = useState<any>(null)
   const [records, setRecords] = useState<any[]>([])
@@ -573,6 +581,7 @@ export default function PatientDashboard() {
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [availableProviders, setAvailableProviders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [decryptingRecordId, setDecryptingRecordId] = useState<string | null>(null)
 
   const [showGrant, setShowGrant] = useState(false)
   const [grantData, setGrantData] = useState({
@@ -644,76 +653,6 @@ export default function PatientDashboard() {
       })
     }
     setLoading(false)
-  }
-
-  const handleUpload = async () => {
-    if (!uploadData.fileName) {
-      toast({
-        title: "Error",
-        description: "Please enter a file name",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!selectedFile) {
-      toast({
-        title: "Error",
-        description: "Please select a file to upload",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setUploading(true)
-
-    try {
-      // Create FormData (NOT JSON)
-      const formData = new FormData()
-      formData.append("file", selectedFile)
-      formData.append("fileName", uploadData.fileName)
-      formData.append("recordType", uploadData.recordType)
-      formData.append("description", uploadData.description)
-
-      const token = localStorage.getItem("token")
-      
-      const res = await fetch("/api/patient/records", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          // DO NOT set Content-Type header - browser sets it automatically for FormData
-        },
-        body: formData,
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.error || data.details || "Upload failed")
-      }
-
-      toast({
-        title: "Success",
-        description: "Medical record uploaded successfully",
-      })
-
-      // Reset form
-      setUploadData({ fileName: "", recordType: "Lab Report", description: "" })
-      setSelectedFile(null)
-      setShowUpload(false)
-      
-      // Refresh data
-      loadData()
-    } catch (error: any) {
-      console.error("Upload error:", error)
-      toast({
-        title: "Error",
-        description: error.message || "Failed to upload record",
-        variant: "destructive",
-      })
-    } finally {
-      setUploading(false)
-    }
   }
 
   const handleGrantAccess = async () => {
@@ -790,24 +729,61 @@ export default function PatientDashboard() {
     router.push("/")
   }
 
-  const handleDownload = (record: any) => {
-    if (!record.cid) {
+  const recordRowId = (record: any) => String(record._id)
+
+  const handleViewRecord = async (record: any) => {
+    const norm = normalizeRecordForDecryption(record)
+    const walletAddress = resolveWalletAddressForCrypto(account?.address, user?.blockchainAddress)
+
+    if (!walletAddress) {
       toast({
-        title: "Error",
-        description: "This record hasn't been uploaded to IPFS yet.",
-        variant: "destructive"
+        title: "Wallet address unavailable",
+        description:
+          "Reconnect your wallet from the home page, or ensure your profile has a blockchain address for decryption.",
+        variant: "destructive",
       })
       return
     }
 
-    toast({
-      title: "Opening Record",
-      description: `Fetching ${record.fileName} from IPFS...`,
-    })
-    
-    // Construct the Pinata Gateway URL using the CID
-    const ipfsUrl = `https://gateway.pinata.cloud/ipfs/${record.cid}`
-    window.open(ipfsUrl, '_blank')
+    if (!norm?.cid) {
+      toast({
+        title: "Missing file",
+        description: "This record has no IPFS CID (checked cid, fileCID, and similar fields).",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!norm.encryptedAESKey || !norm.aesIV) {
+      toast({
+        title: "Legacy or unencrypted record",
+        description: "Opening raw IPFS link (ciphertext). Re-upload with encryption for secure viewing.",
+        duration: 6000,
+      })
+      window.open(ipfsGatewayUrl(norm.cid), "_blank", "noopener,noreferrer")
+      return
+    }
+
+    setDecryptingRecordId(recordRowId(record))
+    try {
+      await fetchDecryptAndOpen({
+        cid: norm.cid,
+        wrappedKeyB64: norm.encryptedAESKey,
+        aesIV: norm.aesIV,
+        fileType: norm.fileType,
+        walletAddressLower: walletAddress,
+        displayFileName: typeof record.fileName === "string" ? record.fileName : "record",
+      })
+    } catch (err: any) {
+      console.error("[Patient view record]", err)
+      toast({
+        title: "Decryption failed",
+        description: err.message ?? "Check /security and import your recovery key if you use a new device.",
+        variant: "destructive",
+      })
+    } finally {
+      setDecryptingRecordId(null)
+    }
   }
 
   if (loading) {
@@ -973,14 +949,19 @@ export default function PatientDashboard() {
                             </p>
                           )}
                         </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="gap-2"
-                          onClick={() => handleDownload(record)}
+                          disabled={decryptingRecordId === recordRowId(record)}
+                          onClick={() => handleViewRecord(record)}
                         >
-                          <Download className="h-4 w-4" />
-                          Download
+                          {decryptingRecordId === recordRowId(record) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                          View
                         </Button>
                       </div>
                     ))}

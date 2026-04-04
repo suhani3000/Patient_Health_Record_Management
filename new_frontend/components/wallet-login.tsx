@@ -1,22 +1,17 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { createThirdwebClient } from "thirdweb"
 import { ConnectButton } from "thirdweb/react"
 import { inAppWallet } from "thirdweb/wallets"
 import { useRouter } from "next/navigation"
 import { generateEncryptionKeyPair, savePrivateKey, hasPrivateKey } from "@/lib/crypto"
 import { useToast } from "@/hooks/use-toast"
+import { Button } from "@/components/ui/button"
 
 const client = createThirdwebClient({
   clientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID as string,
 })
-
-const wallets = [
-  inAppWallet({
-    auth: { options: ["email", "google"] },
-  }),
-]
 
 interface WalletLoginProps {
   role: "patient" | "doctor" | "lab" | "admin"
@@ -29,6 +24,15 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
   const { toast } = useToast()
   const [status, setStatus] = useState<"idle" | "authenticating" | "done">("idle")
   const [error, setError] = useState<string | null>(null)
+  /**
+   * Thirdweb In-App: Email OTP and Google OAuth derive *different* smart wallets for the same email.
+   * One wallet per auth strategy — user must pick the same method they used at registration.
+   */
+  const [authMethod, setAuthMethod] = useState<"email" | "google">("email")
+  const wallets = useMemo(
+    () => [inAppWallet({ auth: { options: [authMethod] } })],
+    [authMethod],
+  )
 
   /**
    * Runs after Thirdweb confirms wallet connection.
@@ -114,8 +118,36 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-3 w-full max-w-sm">
+      <div className="w-full space-y-2 rounded-lg border bg-muted/40 p-3 text-left">
+        <p className="text-xs font-medium text-foreground">Sign-in method</p>
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          Email and Google each create a <span className="font-medium">different</span> wallet for the same email.
+          Always use the method you used when you first registered, or your account and encryption keys will not match.
+        </p>
+        <div className="flex gap-2 pt-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={authMethod === "email" ? "default" : "outline"}
+            className="flex-1"
+            onClick={() => setAuthMethod("email")}
+          >
+            Email
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={authMethod === "google" ? "default" : "outline"}
+            className="flex-1"
+            onClick={() => setAuthMethod("google")}
+          >
+            Google
+          </Button>
+        </div>
+      </div>
       <ConnectButton
+        key={authMethod}
         client={client}
         wallets={wallets}
         connectButton={{ label: "Sign in securely" }}

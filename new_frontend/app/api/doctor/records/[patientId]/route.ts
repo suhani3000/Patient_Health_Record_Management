@@ -3,6 +3,7 @@ import { getDatabase } from "@/lib/db/mongo"
 import { requireVerified } from "@/lib/auth/middleware"
 import type { MedicalRecord, AccessPermission, AuditLog, User } from "@/lib/db/models"
 import { ObjectId } from "mongodb"
+import { leanMedicalRecordForClient } from "@/lib/serializeMedicalRecord"
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ patientId: string }> }) {
   try {
@@ -62,9 +63,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ pati
     const mapped = records.map((rec) => {
       const keys = rec.doctorKeys ?? {}
       const myEncryptedAESKey =
-        doctorChain && keys[doctorChain] ? keys[doctorChain] : undefined
+        doctorChain && keys[doctorChain] ? String(keys[doctorChain]) : undefined
+      const cid = rec.cid ?? rec.fileCID
+      const base = leanMedicalRecordForClient(rec as unknown as Record<string, unknown>)
       return {
-        ...rec,
+        ...base,
+        cid: cid != null ? String(cid) : base.cid,
         myEncryptedAESKey,
       }
     })

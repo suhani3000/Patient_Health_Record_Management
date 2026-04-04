@@ -139,7 +139,9 @@ export default function LandingPage() {
             </div>
             <CardDescription>
               Connecting as{" "}
-              <span className="font-semibold capitalize">{selectedRole}</span> using your Web3 wallet
+              <span className="font-semibold capitalize">{selectedRole}</span> using your Web3 wallet.
+              Choose Email <span className="font-medium">or</span> Google below the button and stick with it—each method
+              creates a different wallet for the same email.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">

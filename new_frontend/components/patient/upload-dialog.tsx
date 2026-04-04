@@ -15,20 +15,26 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Upload, AlertTriangle, Lock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { thirdwebClient, localChain, EHRRegistryABI, EHR_REGISTRY_ADDRESS } from "@/lib/contracts"
+import {
+  thirdwebClient,
+  localChain,
+  EHRRegistryABI,
+  EHR_REGISTRY_ADDRESS_DEPLOYED,
+} from "@/lib/contracts"
 import { encryptFile, wrapAESKey } from "@/lib/crypto"
 
 interface UploadDialogProps {
   onUploadSuccess: () => void
 }
 
+/** Must be a named type: in .tsx, `useState` + newline + `<` is parsed as JSX, not generics. */
+type UploadStage = "idle" | "encrypting" | "uploading-ipfs" | "registering-chain" | "saving-db"
+
 export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
   const account = useActiveAccount()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [uploadStage, setUploadStage] = useState
-    "idle" | "encrypting" | "uploading-ipfs" | "registering-chain" | "saving-db"
-  >("idle")
+  const [uploadStage, setUploadStage] = useState<UploadStage>("idle")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [recordType, setRecordType] = useState("")
   const [description, setDescription] = useState("")
@@ -111,14 +117,17 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
       let transactionHash: string | null = null
       let blockchainWarning = false
 
-      if (!account || !EHR_REGISTRY_ADDRESS) {
+      const registryAddr = EHR_REGISTRY_ADDRESS_DEPLOYED
+      if (!account || !registryAddr) {
         blockchainWarning = true
       } else {
+        const activeAccount = account
+        const contractAddress = registryAddr satisfies `0x${string}`
         try {
           const contract = getContract({
             client: thirdwebClient,
             chain: localChain,
-            address: EHR_REGISTRY_ADDRESS,
+            address: contractAddress,
             abi: EHRRegistryABI,
           })
 
@@ -128,7 +137,7 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
             params: [recordType],
           })
 
-          const receipt = await sendTransaction({ transaction: tx, account })
+          const receipt = await sendTransaction({ transaction: tx, account: activeAccount })
           const confirmed = await waitForReceipt({
             client: thirdwebClient,
             chain: localChain,
@@ -136,12 +145,15 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
           })
 
           transactionHash = confirmed.transactionHash
+          const regLower = contractAddress.toLowerCase()
           for (const log of confirmed.logs ?? []) {
+            const topic2 = log.topics?.[2]
             if (
-              log.address?.toLowerCase() === EHR_REGISTRY_ADDRESS.toLowerCase() &&
-              log.topics?.length >= 3
+              log.address?.toLowerCase() === regLower &&
+              topic2 !== undefined &&
+              topic2 !== null
             ) {
-              fileId = Number(BigInt(log.topics[2]))
+              fileId = Number(BigInt(topic2))
               break
             }
           }
@@ -201,7 +213,7 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
     }
   }
 
-  const stageLabel: Record<typeof uploadStage, string> = {
+  const stageLabel: Record<UploadStage, string> = {
     idle: "Upload",
     encrypting: "Encrypting file…",
     "uploading-ipfs": "Uploading to IPFS…",
@@ -248,10 +260,10 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
               <Textarea id="description" placeholder="Add any notes…" value={description}
                 onChange={(e) => setDescription(e.target.value)} rows={3} />
             </div>
-            {!EHR_REGISTRY_ADDRESS && (
+            {!EHR_REGISTRY_ADDRESS_DEPLOYED && (
               <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 p-3 rounded-md">
                 <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <span><strong>NEXT_PUBLIC_EHR_REGISTRY_ADDRESS</strong> not set. Blockchain step will be skipped.</span>
+                <span><strong>NEXT_PUBLIC_EHR_REGISTRY_ADDRESS</strong> not set or invalid. Blockchain step will be skipped.</span>
               </div>
             )}
           </div>

@@ -93,7 +93,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireVerified } from "@/lib/auth/middleware"
-import type { MedicalRecord, AccessPermission, AuditLog } from "@/lib/db/models"
+import type { MedicalRecord, AccessPermission, AuditLog, User } from "@/lib/db/models"
 import { ObjectId } from "mongodb"
 import { pinFileToIPFS } from "@/lib/ipfs"
 
@@ -120,7 +120,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
+    if (!ObjectId.isValid(patientId)) {
+      return NextResponse.json({ error: "Invalid patientId" }, { status: 400 })
+    }
+    if (!ObjectId.isValid(user.userId)) {
+      return NextResponse.json({ error: "Invalid doctor user id" }, { status: 400 })
+    }
+
+    const encryptedAESKey = formData.get("encryptedAESKey")?.toString() ?? null
+    const aesIV = formData.get("aesIV")?.toString() ?? null
+    const doctorEncryptedAESKey = formData.get("doctorEncryptedAESKey")?.toString() ?? null
+    if (!encryptedAESKey || !aesIV) {
+      return NextResponse.json(
+        { error: "Missing encryption fields (encryptedAESKey, aesIV). File must be encrypted for the patient before upload." },
+        { status: 400 },
+      )
+    }
+
     const db = await getDatabase()
+    const usersCollection = db.collection<User>("users")
     const permissionsCollection = db.collection<AccessPermission>("accessPermissions")
     const recordsCollection = db.collection<MedicalRecord>("medicalRecords")
     const auditLogsCollection = db.collection<AuditLog>("auditLogs")
@@ -146,22 +164,34 @@ export async function POST(req: NextRequest) {
     }
     const fileCID = cid
     const fileUrl = `ipfs://${cid}`
+    const patientOid = new ObjectId(patientId)
+    const doctorOid = new ObjectId(user.userId)
+
+    const doctorUserDoc = await usersCollection.findOne({ _id: doctorOid })
+    const doctorChain = doctorUserDoc?.blockchainAddress?.toLowerCase() ?? ""
+    const doctorKeys: Record<string, string> = {}
+    if (doctorEncryptedAESKey && doctorChain) {
+      doctorKeys[doctorChain] = doctorEncryptedAESKey
+    }
 
     const newRecord: Omit<MedicalRecord, "_id"> = {
-      patientId: new ObjectId(patientId),
-      uploadedBy: new ObjectId(user.userId),
+      patientId: patientOid,
+      uploadedBy: doctorOid,
       uploaderRole: "doctor",
       fileName,
       fileType: file.type || fileType || "application/octet-stream",
       fileUrl,
       fileCID,
+      cid,
       fileHash,
       recordType,
+      encryptedAESKey,
+      aesIV,
+      doctorKeys,
       fileId: Number(0),
       transactionHash: String(""),
       uploadDate: new Date(),
       metadata: { description },
-      
     }
 
     const recordResult = await recordsCollection.insertOne(newRecord as any)

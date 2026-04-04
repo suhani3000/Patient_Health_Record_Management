@@ -34,6 +34,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo";
 import { uploadFileToIPFS } from "@/lib/ipfs";
 import { requireRole } from "@/lib/auth/middleware";
+import { leanMedicalRecordForClient } from "@/lib/serializeMedicalRecord";
 
 export async function POST(req: NextRequest) {
   try {
@@ -131,8 +132,10 @@ export async function GET(req: NextRequest) {
       .sort({ createdAt: -1 })
       .toArray();
 
+    const lean = records.map((r) => leanMedicalRecordForClient(r as Record<string, unknown>))
+
     return NextResponse.json(
-      { records },
+      { records: lean },
       { status: 200 }
     );
   } catch (error: any) {
