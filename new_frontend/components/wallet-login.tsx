@@ -2,11 +2,13 @@
 
 import { useState } from "react"
 import { createThirdwebClient } from "thirdweb"
-import { ConnectButton } from "thirdweb/react"
+import { useConnectModal } from "thirdweb/react"
 import { inAppWallet } from "thirdweb/wallets"
 import { useRouter } from "next/navigation"
 import { generateEncryptionKeyPair, savePrivateKey, hasPrivateKey } from "@/lib/crypto"
 import { useToast } from "@/hooks/use-toast"
+import { Button } from "@/components/ui/button"
+import { Loader2 } from "lucide-react"
 
 const client = createThirdwebClient({
   clientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID as string,
@@ -27,20 +29,35 @@ interface WalletLoginProps {
 export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
   const router = useRouter()
   const { toast } = useToast()
+  const { connect, isConnecting } = useConnectModal()
   const [status, setStatus] = useState<"idle" | "authenticating" | "done">("idle")
   const [error, setError] = useState<string | null>(null)
 
   /**
-   * Runs after Thirdweb confirms wallet connection.
-   * 1. Calls /api/auth/unified → get JWT
-   * 2. Stores JWT in localStorage
-   * 3. Generates RSA-OAEP keypair if first time
-   * 4. Pushes public key to /api/auth/unified (second call, lightweight)
+   * Triggered when the user clicks "Sign In".
+   * 1. Opens the Thirdweb modal programmatically (no nested <button>)
+   * 2. On success, calls /api/auth/unified → get JWT
+   * 3. Stores JWT in localStorage
+   * 4. Generates RSA-OAEP keypair if first time
    * 5. Redirects to role dashboard
    */
-  const handleConnect = async (wallet: any) => {
-    setStatus("authenticating")
+  const handleSignIn = async () => {
     setError(null)
+
+    let wallet: any
+    try {
+      // Open the Thirdweb connect modal – resolves when user finishes auth
+      wallet = await connect({
+        client,
+        wallets,
+      })
+    } catch (err: any) {
+      // User closed the modal or cancelled — not a critical error
+      console.log("[WalletLogin] Connect modal dismissed:", err?.message)
+      return
+    }
+
+    setStatus("authenticating")
 
     try {
       const account = wallet.getAccount()
@@ -54,7 +71,7 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           blockchainAddress: walletAddress,
-          email: null, // Thirdweb will have set this during OAuth — backend derives from wallet
+          email: null, // backend derives email from the wallet record
           role,
         }),
       })
@@ -113,21 +130,19 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
     }
   }
 
-  return (
-    <div className="flex flex-col items-center gap-3">
-      <ConnectButton
-        client={client}
-        wallets={wallets}
-        connectButton={{ label: "Sign in securely" }}
-        onConnect={handleConnect}
-      />
+  const busy = isConnecting || status === "authenticating"
 
-      {/* Status feedback */}
-      {status === "authenticating" && (
-        <p className="text-sm text-muted-foreground animate-pulse">
-          Setting up your secure account…
-        </p>
-      )}
+  return (
+    <div className="flex flex-col items-center gap-3 w-full">
+      <Button
+        id="wallet-login-btn"
+        className="w-full gap-2"
+        onClick={handleSignIn}
+        disabled={busy}
+      >
+        {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+        {busy ? "Signing in…" : "Sign in securely"}
+      </Button>
 
       {error && (
         <p className="text-sm text-red-600 text-center max-w-xs">

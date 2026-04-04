@@ -26,7 +26,7 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
   const account = useActiveAccount()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [uploadStage, setUploadStage] = useState
+  const [uploadStage, setUploadStage] = useState<
     "idle" | "encrypting" | "uploading-ipfs" | "registering-chain" | "saving-db"
   >("idle")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
