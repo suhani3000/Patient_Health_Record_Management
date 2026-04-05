@@ -655,45 +655,190 @@ export default function PatientDashboard() {
     setLoading(false)
   }
 
-  const handleGrantAccess = async () => {
-    if (!grantData.userId) {
-      toast({
-        title: "Error",
-        description: "Please select a provider",
-        variant: "destructive",
-      })
-      return
-    }
+  // const handleGrantAccess = async () => {
+  //   if (!grantData.userId) {
+  //     toast({
+  //       title: "Error",
+  //       description: "Please select a provider",
+  //       variant: "destructive",
+  //     })
+  //     return
+  //   }
 
-    try {
-      const res = await fetch("/api/patient/access/grant", {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(grantData),
-      })
+  //   try {
+  //     const res = await fetch("/api/patient/access/grant", {
+  //       method: "POST",
+  //       headers: getAuthHeaders(),
+  //       body: JSON.stringify(grantData),
+  //     })
 
-      const data = await res.json()
+  //     const data = await res.json()
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to grant access")
-      }
+  //     if (!res.ok) {
+  //       throw new Error(data.error || "Failed to grant access")
+  //     }
 
-      toast({
-        title: "Success",
-        description: "Access granted successfully",
-      })
+  //     toast({
+  //       title: "Success",
+  //       description: "Access granted successfully",
+  //     })
 
-      setGrantData({ userId: "", accessLevel: "view" })
-      setShowGrant(false)
-      loadData()
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to grant access",
-        variant: "destructive",
-      })
-    }
+  //     setGrantData({ userId: "", accessLevel: "view" })
+  //     setShowGrant(false)
+  //     loadData()
+  //   } catch (error: any) {
+  //     toast({
+  //       title: "Error",
+  //       description: error.message || "Failed to grant access",
+  //       variant: "destructive",
+  //     })
+  //   }
+  // }
+
+  
+// UPDATE: In app/patient/page.tsx, replace handleGrantAccess function (around line 658-696)
+
+const handleGrantAccess = async () => {
+  if (!grantData.userId) {
+    toast({
+      title: "Error",
+      description: "Please select a provider",
+      variant: "destructive",
+    })
+    return
   }
+
+  try {
+    console.log("[Patient Grant Access] Starting key wrapping...")
+
+    // Step 1: Get all patient's records (to re-wrap their AES keys for the doctor)
+    const recordsRes = await fetch("/api/patient/records", {
+      headers: getAuthHeaders(),
+    })
+
+    if (!recordsRes.ok) {
+      throw new Error("Could not fetch your records for key wrapping")
+    }
+
+    const recordsData = await recordsRes.json()
+    const patientRecords = recordsData.records || []
+
+    // Step 2: Get the doctor's info (blockchain address + public key)
+    const doctorToGrantRaw = availableProviders.find((p) => p._id === grantData.userId)
+    if (!doctorToGrantRaw) {
+      throw new Error("Doctor not found")
+    }
+
+    const doctorBlockchainAddress = doctorToGrantRaw.blockchainAddress?.toLowerCase()
+    const doctorPublicKey = doctorToGrantRaw.encryptionPublicKey
+
+    if (!doctorBlockchainAddress) {
+      throw new Error(
+        "Selected provider has no blockchain address. They must log in first."
+      )
+    }
+
+    if (!doctorPublicKey) {
+      throw new Error(
+        "Selected provider has no encryption public key. They must log in first."
+      )
+    }
+
+    console.log(`[Patient Grant Access] Doctor blockchain: ${doctorBlockchainAddress}`)
+
+    // Step 3: Retrieve patient's private key and import it
+    const walletAddress = account?.address?.toLowerCase() || user?.blockchainAddress?.toLowerCase()
+    if (!walletAddress) {
+      throw new Error("Your wallet address is unavailable")
+    }
+
+    // Dynamically import crypto functions (avoids SSR issues)
+    const { unwrapAESKey, wrapAESKey } = await import("@/lib/crypto")
+
+    // Get patient's private key from localStorage
+    const privKeyRaw = localStorage.getItem(`ehr_privkey_${walletAddress}`)
+    if (!privKeyRaw) {
+      throw new Error(
+        "Your encryption private key is not available. Please log out and log back in."
+      )
+    }
+
+    // Step 4: For each of patient's records, re-wrap the AES key for the doctor
+    const doctorKeyMap: Record<string, string> = {}
+
+    for (const record of patientRecords) {
+      try {
+        const recordId = String(record._id)
+        const encryptedAESKeyB64 = record.encryptedAESKey
+
+        if (!encryptedAESKeyB64) {
+          console.warn(
+            `[Patient Grant Access] Record ${recordId} has no encryptedAESKey, skipping`
+          )
+          continue
+        }
+
+        // Unwrap the AES key using patient's private key
+        const aesKeyRaw = await unwrapAESKey(encryptedAESKeyB64, walletAddress)
+        console.log(
+          `[Patient Grant Access] Unwrapped AES key for record ${recordId.substring(0, 8)}...`
+        )
+
+        // Re-wrap AES key with doctor's public key
+        const doctorEncryptedAESKey = await wrapAESKey(aesKeyRaw, doctorPublicKey)
+        doctorKeyMap[recordId] = doctorEncryptedAESKey
+
+        console.log(
+          `[Patient Grant Access] Re-wrapped AES key for doctor on record ${recordId.substring(0, 8)}...`
+        )
+      } catch (err: any) {
+        console.error(`[Patient Grant Access] Failed to wrap key for record`, err)
+        // Continue with other records instead of failing completely
+      }
+    }
+
+    console.log(
+      `[Patient Grant Access] Prepared ${Object.keys(doctorKeyMap).length} wrapped keys`
+    )
+
+    // Step 5: Send grant request with wrapped keys
+    const grantRes = await fetch("/api/patient/access/grant", {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        userId: grantData.userId,
+        accessLevel: grantData.accessLevel,
+        doctorKeyMap,  // ← CRITICAL: Send all wrapped keys
+        doctorAddress: doctorBlockchainAddress,  // ← Doctor's blockchain address
+      }),
+    })
+
+    const grantData_result = await grantRes.json()
+
+    if (!grantRes.ok) {
+      throw new Error(grantData_result.error || "Failed to grant access")
+    }
+
+    console.log("[Patient Grant Access] Access granted successfully ✅")
+
+    toast({
+      title: "Success",
+      description: `Access granted to ${doctorToGrantRaw.name}. They can now view and decrypt your records.`,
+    })
+
+    setGrantData({ userId: "", accessLevel: "view" })
+    setShowGrant(false)
+    loadData()
+
+  } catch (error: any) {
+    console.error("[Patient Grant Access] Error:", error)
+    toast({
+      title: "Error",
+      description: error.message || "Failed to grant access",
+      variant: "destructive",
+    })
+  }
+}
 
   const handleRevokeAccess = async (userId: string) => {
     try {

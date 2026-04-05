@@ -346,111 +346,251 @@ export default function DoctorDashboard() {
     setCanUpload(canUploadToPatient)
   }
 
+  // const handleUpload = async () => {
+  //   if (!selectedPatient) {
+  //     toast({
+  //       title: "Error",
+  //       description: "Please select a patient first",
+  //       variant: "destructive",
+  //     })
+  //     return
+  //   }
+
+  //   if (!uploadData.fileName || !selectedFile) {
+  //     toast({
+  //       title: "Error",
+  //       description: "Please select a file and enter a file name",
+  //       variant: "destructive",
+  //     })
+  //     return
+  //   }
+
+  //   if (!selectedPatient.patientEncryptionPublicKey) {
+  //     toast({
+  //       title: "Cannot upload encrypted file",
+  //       description:
+  //         "This patient has no RSA public key on file. They must sign in once so encryption can be set up.",
+  //       variant: "destructive",
+  //     })
+  //     return
+  //   }
+
+  //   try {
+  //     const fileBuffer = await selectedFile.arrayBuffer()
+  //     const { encryptedBuffer, aesKeyRaw, ivB64 } = await encryptFile(fileBuffer)
+  //     const encryptedAESKey = await wrapAESKey(
+  //       aesKeyRaw,
+  //       selectedPatient.patientEncryptionPublicKey as string,
+  //     )
+
+  //     const token = localStorage.getItem("token")
+  //     let doctorEncryptedAESKey: string | null = null
+  //     if (token) {
+  //       try {
+  //         const meRes = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+  //         if (meRes.ok) {
+  //           const meData = await meRes.json()
+  //           const doctorPub = meData.user?.encryptionPublicKey as string | undefined
+  //           if (doctorPub) {
+  //             doctorEncryptedAESKey = await wrapAESKey(aesKeyRaw, doctorPub)
+  //           }
+  //         }
+  //       } catch {
+  //         console.warn("[Doctor upload] Could not wrap AES key for doctor copy")
+  //       }
+  //     }
+
+  //     const encBlob = new Blob([encryptedBuffer], { type: "application/octet-stream" })
+  //     const baseName = (uploadData.fileName || selectedFile.name).replace(/\.enc$/i, "")
+  //     const encryptedFile = new File([encBlob], `${baseName}.enc`)
+
+  //     const formData = new FormData()
+  //     formData.append("file", encryptedFile)
+  //     formData.append("patientId", String(selectedPatient.patientId))
+  //     formData.append("fileName", uploadData.fileName || selectedFile.name)
+  //     formData.append("recordType", uploadData.recordType)
+  //     formData.append("description", uploadData.description)
+  //     formData.append("fileType", selectedFile.type || "application/octet-stream")
+  //     formData.append("encryptedAESKey", encryptedAESKey)
+  //     formData.append("aesIV", ivB64)
+  //     if (doctorEncryptedAESKey) {
+  //       formData.append("doctorEncryptedAESKey", doctorEncryptedAESKey)
+  //     }
+
+  //     const res = await fetch("/api/doctor/upload", {
+  //       method: "POST",
+  //       headers: getAuthHeaders(),
+  //       body: formData,
+  //     })
+
+  //     const data = await res.json()
+
+  //     if (!res.ok) {
+  //       throw new Error(data.error || "Upload failed")
+  //     }
+
+  //     toast({
+  //       title: "Success",
+  //       description: "Record uploaded successfully",
+  //     })
+
+  //     // Reset form
+  //     setUploadData({
+  //       fileName: "",
+  //       fileType: "pdf",
+  //       recordType: "Consultation Note",
+  //       description: "",
+  //     })
+  //     setSelectedFile(null)
+  //     setShowUploadDialog(false)
+  //   } catch (error: any) {
+  //     toast({
+  //       title: "Error",
+  //       description: error.message || "Failed to upload record",
+  //       variant: "destructive",
+  //     })
+  //   }
+  // }
+
   const handleUpload = async () => {
-    if (!selectedPatient) {
-      toast({
-        title: "Error",
-        description: "Please select a patient first",
-        variant: "destructive",
-      })
-      return
-    }
+  if (!selectedPatient) {
+    toast({
+      title: "Error",
+      description: "Please select a patient first",
+      variant: "destructive",
+    })
+    return
+  }
 
-    if (!uploadData.fileName || !selectedFile) {
-      toast({
-        title: "Error",
-        description: "Please select a file and enter a file name",
-        variant: "destructive",
-      })
-      return
-    }
+  if (!uploadData.fileName || !selectedFile) {
+    toast({
+      title: "Error",
+      description: "Please select a file and enter a file name",
+      variant: "destructive",
+    })
+    return
+  }
 
-    if (!selectedPatient.patientEncryptionPublicKey) {
-      toast({
-        title: "Cannot upload encrypted file",
-        description:
-          "This patient has no RSA public key on file. They must sign in once so encryption can be set up.",
-        variant: "destructive",
-      })
-      return
+  if (!selectedPatient.patientEncryptionPublicKey) {
+    toast({
+      title: "Cannot upload encrypted file",
+      description:
+        "This patient has no RSA public key on file. They must sign in once so encryption can be set up.",
+      variant: "destructive",
+    })
+    return
+  }
+
+  try {
+    console.log("[Doctor Upload] Starting encryption workflow...")
+    
+    // Step 1: Get file buffer
+    const fileBuffer = await selectedFile.arrayBuffer()
+    console.log(`[Doctor Upload] File size: ${fileBuffer.byteLength} bytes`)
+
+    // Step 2: Encrypt file with random AES-256-GCM key
+    const { encryptedBuffer, aesKeyRaw, ivB64 } = await encryptFile(fileBuffer)
+    console.log("[Doctor Upload] File encrypted with AES-256-GCM ✅")
+
+    // Step 3: Wrap AES key with PATIENT's public key (mandatory - for patient to decrypt)
+    const encryptedAESKey = await wrapAESKey(
+      aesKeyRaw,
+      selectedPatient.patientEncryptionPublicKey as string,
+    )
+    console.log("[Doctor Upload] AES key wrapped with patient's public key ✅")
+
+    // Step 4: Get doctor's own public key and wrap AES key for self-access (MANDATORY)
+    let doctorEncryptedAESKey: string | null = null
+    const token = localStorage.getItem("token")
+    
+    if (!token) {
+      throw new Error("No auth token found. Please log in again.")
     }
 
     try {
-      const fileBuffer = await selectedFile.arrayBuffer()
-      const { encryptedBuffer, aesKeyRaw, ivB64 } = await encryptFile(fileBuffer)
-      const encryptedAESKey = await wrapAESKey(
-        aesKeyRaw,
-        selectedPatient.patientEncryptionPublicKey as string,
+      const meRes = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      if (!meRes.ok) {
+        throw new Error(`Failed to fetch doctor's public key: ${meRes.statusText}`)
+      }
+      
+      const meData = await meRes.json()
+      const doctorPub = meData.user?.encryptionPublicKey as string | undefined
+      
+      if (!doctorPub) {
+        throw new Error(
+          "Doctor has no encryption public key. Please log out and log back in to generate keys."
+        )
+      }
+
+      doctorEncryptedAESKey = await wrapAESKey(aesKeyRaw, doctorPub)
+      console.log("[Doctor Upload] AES key wrapped with doctor's public key ✅")
+      
+    } catch (err: any) {
+      console.error("[Doctor Upload] Error wrapping doctor's key:", err.message)
+      throw new Error(
+        `Cannot wrap AES key for your own decryption: ${err.message}. Upload aborted.`
       )
-
-      const token = localStorage.getItem("token")
-      let doctorEncryptedAESKey: string | null = null
-      if (token) {
-        try {
-          const meRes = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
-          if (meRes.ok) {
-            const meData = await meRes.json()
-            const doctorPub = meData.user?.encryptionPublicKey as string | undefined
-            if (doctorPub) {
-              doctorEncryptedAESKey = await wrapAESKey(aesKeyRaw, doctorPub)
-            }
-          }
-        } catch {
-          console.warn("[Doctor upload] Could not wrap AES key for doctor copy")
-        }
-      }
-
-      const encBlob = new Blob([encryptedBuffer], { type: "application/octet-stream" })
-      const baseName = (uploadData.fileName || selectedFile.name).replace(/\.enc$/i, "")
-      const encryptedFile = new File([encBlob], `${baseName}.enc`)
-
-      const formData = new FormData()
-      formData.append("file", encryptedFile)
-      formData.append("patientId", String(selectedPatient.patientId))
-      formData.append("fileName", uploadData.fileName || selectedFile.name)
-      formData.append("recordType", uploadData.recordType)
-      formData.append("description", uploadData.description)
-      formData.append("fileType", selectedFile.type || "application/octet-stream")
-      formData.append("encryptedAESKey", encryptedAESKey)
-      formData.append("aesIV", ivB64)
-      if (doctorEncryptedAESKey) {
-        formData.append("doctorEncryptedAESKey", doctorEncryptedAESKey)
-      }
-
-      const res = await fetch("/api/doctor/upload", {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: formData,
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.error || "Upload failed")
-      }
-
-      toast({
-        title: "Success",
-        description: "Record uploaded successfully",
-      })
-
-      // Reset form
-      setUploadData({
-        fileName: "",
-        fileType: "pdf",
-        recordType: "Consultation Note",
-        description: "",
-      })
-      setSelectedFile(null)
-      setShowUploadDialog(false)
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to upload record",
-        variant: "destructive",
-      })
     }
+
+    // Step 5: Prepare encrypted file blob
+    const encBlob = new Blob([encryptedBuffer], { type: "application/octet-stream" })
+    const baseName = (uploadData.fileName || selectedFile.name).replace(/\.enc$/i, "")
+    const encryptedFile = new File([encBlob], `${baseName}.enc`)
+    console.log("[Doctor Upload] Encrypted file prepared for IPFS")
+
+    // Step 6: Build FormData with ALL encryption metadata
+    const formData = new FormData()
+    formData.append("file", encryptedFile)
+    formData.append("patientId", String(selectedPatient.patientId))
+    formData.append("fileName", uploadData.fileName || selectedFile.name)
+    formData.append("recordType", uploadData.recordType)
+    formData.append("description", uploadData.description)
+    formData.append("fileType", selectedFile.type || "application/octet-stream")
+    formData.append("encryptedAESKey", encryptedAESKey)  // ← For patient decryption
+    formData.append("aesIV", ivB64)
+    formData.append("doctorEncryptedAESKey", doctorEncryptedAESKey)  // ← For doctor self-decrypt
+    
+    console.log("[Doctor Upload] FormData prepared with encryption metadata")
+
+    // Step 7: Upload to backend
+    const res = await fetch("/api/doctor/upload", {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: formData,
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data.error || `Upload failed with status ${res.status}`)
+    }
+
+    console.log("[Doctor Upload] Upload successful ✅", data.recordId)
+
+    toast({
+      title: "Success",
+      description: "Record uploaded successfully. You can decrypt it from the records page.",
+    })
+
+    // Step 8: Reset form
+    setUploadData({
+      fileName: "",
+      fileType: "pdf",
+      recordType: "Consultation Note",
+      description: "",
+    })
+    setSelectedFile(null)
+    setShowUploadDialog(false)
+    
+  } catch (error: any) {
+    console.error("[Doctor Upload] Critical error:", error)
+    toast({
+      title: "Upload Failed",
+      description: error.message || "An error occurred during encryption or upload.",
+      variant: "destructive",
+    })
   }
+}
 
 
   const handleLogout = () => {

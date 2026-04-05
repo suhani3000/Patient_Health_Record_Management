@@ -164,13 +164,14 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
           </Button>
         </div>
       </div>
-      <ConnectButton
-        key={authMethod}
-        client={client}
-        wallets={wallets}
-        connectButton={{ label: "Sign in securely" }}
-        onConnect={handleConnect}
-      />
+      <Button 
+        onClick={handleSignIn} 
+        disabled={busy}
+        className="w-full"
+      >
+        {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        Sign in securely
+      </Button>
 
       {/* Status feedback */}
       {status === "authenticating" && (
