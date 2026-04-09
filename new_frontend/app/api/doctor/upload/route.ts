@@ -130,12 +130,7 @@ export async function POST(req: NextRequest) {
     const encryptedAESKey = formData.get("encryptedAESKey")?.toString() ?? null
     const aesIV = formData.get("aesIV")?.toString() ?? null
     const doctorEncryptedAESKey = formData.get("doctorEncryptedAESKey")?.toString() ?? null
-    if (!encryptedAESKey || !aesIV) {
-      return NextResponse.json(
-        { error: "Missing encryption fields (encryptedAESKey, aesIV). File must be encrypted for the patient before upload." },
-        { status: 400 },
-      )
-    }
+    // Encryption is now optional
 
     const db = await getDatabase()
     const usersCollection = db.collection<User>("users")

@@ -3,19 +3,12 @@
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { useActiveAccount } from "thirdweb/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Eye, FileText, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import {
-  normalizeRecordForDecryption,
-  resolveWalletAddressForCrypto,
-  fetchDecryptAndOpen,
-  ipfsGatewayUrl,
-  coerceCryptoString,
-} from "@/lib/view-encrypted-record"
+import { normalizeRecordForDecryption, ipfsGatewayUrl } from "@/lib/view-encrypted-record"
 
 interface DoctorRecord {
   _id: string | { toString?: () => string }
@@ -26,6 +19,10 @@ interface DoctorRecord {
   fileType?: string
   aesIV?: string
   myEncryptedAESKey?: string
+  // Returned by the doctor records API via `leanMedicalRecordForClient`.
+  // We use this as a fallback in case `myEncryptedAESKey` injection doesn't match
+  // the exact localStorage private-key address string for this device.
+  doctorKeys?: Record<string, unknown>
   uploadDate?: string
   createdAt?: string
   metadata?: { description?: string }
@@ -35,7 +32,6 @@ export default function DoctorPatientRecordsPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const account = useActiveAccount()
   const { toast } = useToast()
 
   const patientId = typeof params.patientId === "string" ? params.patientId : ""
@@ -44,16 +40,6 @@ export default function DoctorPatientRecordsPage() {
   const [records, setRecords] = useState<DoctorRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [decryptingId, setDecryptingId] = useState<string | null>(null)
-
-  const profileChainAddress = (() => {
-    try {
-      const raw = localStorage.getItem("user")
-      if (!raw) return undefined
-      return JSON.parse(raw).blockchainAddress as string | undefined
-    } catch {
-      return undefined
-    }
-  })()
 
   const loadRecords = useCallback(async () => {
     const token = localStorage.getItem("token")
@@ -101,22 +87,8 @@ export default function DoctorPatientRecordsPage() {
   const recordIdStr = (r: DoctorRecord) => String(r._id)
 
   const handleViewRecord = async (record: DoctorRecord) => {
-    const walletAddress = resolveWalletAddressForCrypto(account?.address, profileChainAddress)
-
-    if (!walletAddress) {
-      toast({
-        title: "Wallet address unavailable",
-        description: "Reconnect from the home page so your wallet matches your profile, or check /security for your key.",
-        variant: "destructive",
-      })
-      return
-    }
-
     const norm = normalizeRecordForDecryption(record)
     const cid = norm?.cid
-    const wrappedKey = coerceCryptoString(record.myEncryptedAESKey)
-    const iv = norm?.aesIV
-    const fileType = norm?.fileType || record.fileType?.trim() || "application/octet-stream"
 
     if (!cid) {
       toast({
@@ -127,42 +99,13 @@ export default function DoctorPatientRecordsPage() {
       return
     }
 
-    if (!wrappedKey || !iv) {
-      if (!wrappedKey && cid) {
-        toast({
-          title: "No key shared — opening raw IPFS",
-          description: "You will see ciphertext unless the patient re-grants access with key sharing.",
-          duration: 6000,
-        })
-        window.open(ipfsGatewayUrl(cid), "_blank", "noopener,noreferrer")
-        return
-      }
-      if (!wrappedKey) {
-        toast({
-          title: "No encryption key for this record",
-          description: "Ask the patient to grant access again so your wrapped AES key is stored.",
-          variant: "destructive",
-        })
-      } else {
-        toast({ title: "Missing IV", description: "This record cannot be decrypted.", variant: "destructive" })
-      }
-      return
-    }
-
     setDecryptingId(recordIdStr(record))
     try {
-      await fetchDecryptAndOpen({
-        cid,
-        wrappedKeyB64: wrappedKey,
-        aesIV: iv,
-        fileType,
-        walletAddressLower: walletAddress,
-        displayFileName: record.fileName || "record",
-      })
+      // Encryption/decryption disabled for now: doctor sees the IPFS-pinned file directly.
+      window.open(ipfsGatewayUrl(cid), "_blank", "noopener,noreferrer")
     } catch (err: any) {
-      console.error("[ViewRecord]", err)
       toast({
-        title: "Decryption failed",
+        title: "Could not open file",
         description: err.message ?? "Could not open this file.",
         variant: "destructive",
       })
@@ -199,10 +142,10 @@ export default function DoctorPatientRecordsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              Encrypted files
+              Files
             </CardTitle>
             <CardDescription>
-              View opens the decrypted file in a new tab. Decryption runs only in your browser.
+              View opens the pinned IPFS file in a new tab.
             </CardDescription>
           </CardHeader>
           <CardContent>

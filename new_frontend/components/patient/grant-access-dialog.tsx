@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { UserPlus, AlertTriangle } from "lucide-react"
+import { UserPlus } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
   thirdwebClient,
@@ -22,7 +22,6 @@ import {
   EHR_ACCESS_ADDRESS_DEPLOYED,
   toAccessTypeUint,
 } from "@/lib/contracts"
-import { unwrapAESKey, wrapAESKey } from "@/lib/crypto"
 
 interface User {
   _id: string
@@ -129,46 +128,10 @@ export function GrantAccessDialog({ onGrantSuccess, fileId = 0 }: GrantAccessDia
       }
     }
 
-    // ── Step 2: Re-encrypt AES keys for the doctor ───────────────────────────
-    // Only if doctor has a public encryption key and patient has their private key
-    setStage("Re-encrypting keys for doctor…")
+    // ── Step 2: (Encryption disabled) No key re-wrapping required ───────────
+    const doctorKeyMap: Record<string, string> = {}
 
-    let doctorKeyMap: Record<string, string> = {} // { recordId → encryptedAESKeyForDoctor }
-
-    const doctorPublicKey = doctorUser?.encryptionPublicKey
-    const patientAddress = account?.address
-
-    if (doctorPublicKey && patientAddress) {
-      try {
-        // Fetch all patient's records that have an encrypted AES key
-        const recordsRes = await fetch("/api/patient/records", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const recordsData = await recordsRes.json()
-        let records: PatientRecordRow[] = recordsData.records ?? []
-
-        if (fileId > 0) {
-          records = records.filter((r) => Number(r.fileId) === fileId)
-        }
-
-        for (const rec of records) {
-          if (!rec.encryptedAESKey) continue
-          try {
-            // Decrypt the AES key using patient's private key
-            const aesKeyRaw = await unwrapAESKey(rec.encryptedAESKey, patientAddress)
-            // Re-encrypt it with doctor's public key
-            const encryptedForDoctor = await wrapAESKey(aesKeyRaw, doctorPublicKey)
-            doctorKeyMap[rec._id] = encryptedForDoctor
-          } catch (keyErr) {
-            console.warn(`[GrantAccess] Could not re-encrypt key for record ${rec._id}:`, keyErr)
-          }
-        }
-      } catch (err) {
-        console.warn("[GrantAccess] Could not re-encrypt doctor keys:", err)
-      }
-    }
-
-    // ── Step 3: Save to MongoDB ──────────────────────────────────────────────
+    // ── Step 3: Save permission to MongoDB ──────────────────────────────────
     setStage("Saving access record…")
     try {
       const res = await fetch("/api/patient/access/grant", {
@@ -222,7 +185,7 @@ export function GrantAccessDialog({ onGrantSuccess, fileId = 0 }: GrantAccessDia
           <DialogHeader>
             <DialogTitle>Grant Access</DialogTitle>
             <DialogDescription>
-              Allow a doctor or lab to access your medical records. Your AES keys will be re-encrypted for them automatically.
+              Allow a doctor or lab to access your medical records stored on IPFS.
               {fileId > 0 && <span className="block text-xs font-medium mt-1">Scoped to File ID: {fileId}</span>}
             </DialogDescription>
           </DialogHeader>
@@ -262,12 +225,7 @@ export function GrantAccessDialog({ onGrantSuccess, fileId = 0 }: GrantAccessDia
                   ))}
                 </SelectContent>
               </Select>
-              {selectedUserId && !users.find((u) => u._id === selectedUserId)?.encryptionPublicKey && (
-                <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 p-2 rounded-md">
-                  <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                  This doctor has no encryption key — they must log in once before you can share encrypted files with them.
-                </div>
-              )}
+              {/* Encryption disabled: no private-key sharing prerequisites */}
             </div>
             <div className="grid gap-2">
               <Label>Access Level</Label>

@@ -17,6 +17,15 @@ export interface User {
   updatedAt: Date
   blockchainAddress?: string // Thirdweb In-App Wallet address (unique, sparse index in MongoDB)
   encryptionPublicKey?: string
+  /**
+   * Server-side escrow for the RSA private key so decryption can work on any device.
+   * Stored encrypted by server secret (see /api/auth/unified).
+   */
+  encryptionPrivateKeyEscrow?: {
+    ivB64: string
+    tagB64: string
+    cipherB64: string
+  }
   /** Patient profile — set during universal intake */
   dateOfBirth?: string
   bloodType?: string
