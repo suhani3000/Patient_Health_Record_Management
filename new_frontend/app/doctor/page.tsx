@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Users, LogOut, ChevronRight, Upload, AlertTriangle, Loader2, Hospital } from "lucide-react"
+import { FileText, Users, LogOut, ChevronRight, Upload, AlertTriangle, Loader2, Hospital, History, ShieldCheck } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { formatIdentifier } from "@/lib/utils/format"
 import { ViewRecordsDialog } from "@/components/dashboard/view-records-dialog"
+import { FollowupsTimelineDialog } from "@/components/dashboard/followups-timeline-dialog"
 
 export default function DoctorDashboard() {
   const router = useRouter()
@@ -34,6 +35,7 @@ export default function DoctorDashboard() {
   // Dialog states
   const [showUploadDialog, setShowUploadDialog] = useState(false)
   const [showRecordsDialog, setShowRecordsDialog] = useState(false)
+  const [showFollowupsDialog, setShowFollowupsDialog] = useState(false)
   const [uploadData, setUploadData] = useState({
     fileName: "",
     fileType: "pdf",
@@ -41,6 +43,9 @@ export default function DoctorDashboard() {
     description: "",
   })
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [sessionNote, setSessionNote] = useState("")
+  const [isSavingNote, setIsSavingNote] = useState(false)
+  const [hasSavedNote, setHasSavedNote] = useState(false)
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token")
@@ -88,8 +93,40 @@ export default function DoctorDashboard() {
 
   const handleSelectPatient = (patient: any) => {
     setSelectedPatient(patient)
+    setSessionNote("") // Clear note when switching patients
+    setHasSavedNote(false)
     const hasUploadAccess = patient.accessLevel?.includes("upload") || patient.accessLevel === "view-upload"
     setCanUpload(hasUploadAccess)
+  }
+
+  const handleSaveSessionNote = async () => {
+    if (!selectedPatient || !sessionNote.trim()) return
+    
+    setIsSavingNote(true)
+    try {
+      const res = await fetch("/api/followup", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          ...getAuthHeaders() 
+        },
+        body: JSON.stringify({
+          patientId: selectedPatient.patientId,
+          description: sessionNote,
+          action: "observation"
+        })
+      })
+
+      if (!res.ok) throw new Error("Failed to save note")
+      
+      toast({ title: "Observation Saved", description: "The clinical note has been added to the history." })
+      setSessionNote("") // Clear box as requested
+      setHasSavedNote(true)
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    } finally {
+      setIsSavingNote(false)
+    }
   }
 
   const handleUpload = async () => {
@@ -105,6 +142,13 @@ export default function DoctorDashboard() {
       formData.append("recordType", uploadData.recordType)
       formData.append("description", uploadData.description)
       formData.append("fileType", selectedFile.type || "application/octet-stream")
+      
+      if (!uploadData.description.trim()) {
+        toast({ title: "Note Required", description: "Please enter a clinical note for this upload.", variant: "destructive" })
+        setUploadStatus("idle")
+        return
+      }
+
       const res = await fetch("/api/doctor/upload", {
         method: "POST",
         headers: getAuthHeaders(),
@@ -255,9 +299,52 @@ export default function DoctorDashboard() {
                     </CardDescription>
                   </div>
                   <div className="flex gap-4">
-                    <Button onClick={() => setShowRecordsDialog(true)} className="gap-2">
+                    {/* Access Level Badge */}
+                    <Badge variant="outline" className="h-fit py-1 px-3 border-primary/20 bg-primary/5 text-primary text-[10px] font-bold uppercase tracking-wider">
+                      Mode: {selectedPatient.accessLevel} Access
+                    </Badge>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="space-y-6 pt-0">
+                  <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold uppercase tracking-widest text-slate-400">Current Session Observations</Label>
+                      <Badge variant="secondary" className="text-[9px] uppercase font-bold text-slate-400 py-0 px-1.5 h-4">
+                        {selectedPatient.accessLevel === "view-upload" ? "Optional for viewing" : "Mandatory for interaction"}
+                      </Badge>
+                    </div>
+                    <textarea 
+                      value={sessionNote}
+                      onChange={(e) => {
+                        setSessionNote(e.target.value)
+                        setHasSavedNote(false)
+                      }}
+                      placeholder={hasSavedNote ? "Enter another clinical note..." : "Enter clinical notes, specific symptoms, or diagnostic reasoning here..."}
+                      className="w-full min-h-[100px] p-4 rounded-xl border bg-white shadow-inner text-sm focus:ring-2 focus:ring-primary outline-none transition-all resize-none mb-3"
+                    />
+                    <div className="flex justify-end">
+                      <Button 
+                        size="sm" 
+                        variant="secondary" 
+                        className="gap-2 font-bold text-xs"
+                        onClick={handleSaveSessionNote}
+                        disabled={isSavingNote || !sessionNote.trim()}
+                      >
+                        {isSavingNote ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
+                        {hasSavedNote ? "Log another observation" : "Log Clinical Observation"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <Button onClick={() => setShowRecordsDialog(true)} className="gap-2 shadow-sm font-bold">
                       <FileText className="h-4 w-4" />
                       View Medical Records
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowFollowupsDialog(true)} className="gap-2 border-primary/20 hover:border-primary">
+                      <History className="h-4 w-4" />
+                      Past Follow-ups
                     </Button>
                     {canUpload && (
                       <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
@@ -286,6 +373,15 @@ export default function DoctorDashboard() {
                               <Label>File</Label>
                               <Input type="file" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} />
                             </div>
+                            <div className="space-y-2">
+                              <Label>Clinical Note (Upload Context)</Label>
+                              <textarea 
+                                value={uploadData.description} 
+                                onChange={(e) => setUploadData({...uploadData, description: e.target.value})}
+                                placeholder="Summary of this specific report..." 
+                                className="w-full min-h-[80px] p-3 rounded-lg border text-sm"
+                              />
+                            </div>
                           </div>
                           <DialogFooter>
                             <Button variant="ghost" onClick={() => setShowUploadDialog(false)}>Cancel</Button>
@@ -300,7 +396,7 @@ export default function DoctorDashboard() {
                       </Dialog>
                     )}
                   </div>
-                </CardHeader>
+                </CardContent>
               </Card>
 
               <ViewRecordsDialog 
@@ -309,6 +405,15 @@ export default function DoctorDashboard() {
                 patientId={selectedPatient.patientId}
                 patientName={selectedPatient.patientName}
                 role="doctor"
+                sessionNote={sessionNote}
+                accessLevel={selectedPatient.accessLevel}
+              />
+
+              <FollowupsTimelineDialog 
+                isOpen={showFollowupsDialog}
+                onOpenChange={setShowFollowupsDialog}
+                patientId={selectedPatient.patientId}
+                patientName={selectedPatient.patientName}
               />
             </div>
           )}

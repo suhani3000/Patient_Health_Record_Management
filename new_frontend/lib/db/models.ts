@@ -159,3 +159,15 @@ export interface AuditLog {
   blockchainTxHash?: string
   metadata?: Record<string, any>
 }
+
+export interface Followup {
+  _id?: ObjectId | string
+  patientId: ObjectId | string
+  doctorId: ObjectId | string
+  doctorName: string
+  doctorSpecialization: string
+  action: "view" | "upload" | "observation"
+  recordId?: string
+  description: string
+  timestamp: Date
+}

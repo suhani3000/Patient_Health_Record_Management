@@ -21,6 +21,8 @@ interface ViewRecordsDialogProps {
   patientId: string
   patientName: string
   role: "doctor" | "lab"
+  sessionNote?: string
+  accessLevel?: string
 }
 
 export function ViewRecordsDialog({
@@ -29,6 +31,8 @@ export function ViewRecordsDialog({
   patientId,
   patientName,
   role,
+  sessionNote = "",
+  accessLevel = "view",
 }: ViewRecordsDialogProps) {
   const [records, setRecords] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -42,7 +46,7 @@ export function ViewRecordsDialog({
       const token = localStorage.getItem("token")
       const endpoint = role === "doctor" 
         ? `/api/doctor/records/${encodeURIComponent(patientId)}`
-        : `/api/lab/records/${encodeURIComponent(patientId)}` // We'll need to create this API for lab if it doesn't exist
+        : `/api/lab/records/${encodeURIComponent(patientId)}`
       
       const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}` },
@@ -68,10 +72,45 @@ export function ViewRecordsDialog({
   }, [isOpen, loadRecords])
 
   const handleViewRecord = async (record: any) => {
+    if (role === "doctor") {
+      const isMandatory = accessLevel === "view" || accessLevel === "upload"
+      
+      if (isMandatory && !sessionNote.trim()) {
+        toast({ 
+          title: "Clinical Note Required", 
+          description: "Your current access level requires a session note before viewing records. Please enter one in the workspace.", 
+          variant: "destructive" 
+        })
+        return
+      }
+
+      // Log followup interaction if note is present
+      if (sessionNote.trim()) {
+        try {
+          const token = localStorage.getItem("token")
+          await fetch("/api/followup", {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}` 
+            },
+            body: JSON.stringify({
+              patientId,
+              description: sessionNote,
+              action: "view",
+              recordId: record._id,
+            }),
+          })
+        } catch (e) {
+          console.error("Interaction logging failed:", e)
+        }
+      }
+    }
+
     const norm = normalizeRecordForDecryption(record)
     if (!norm?.cid) {
       toast({
-        title: "Missing file reference",
+        title: "Error",
         description: "No IPFS CID found for this record.",
         variant: "destructive",
       })
@@ -80,7 +119,6 @@ export function ViewRecordsDialog({
 
     setDecryptingId(record._id)
     try {
-      // In this system, records are currently opened via IPFS gateway
       window.open(ipfsGatewayUrl(norm.cid), "_blank", "noopener,noreferrer")
     } catch (err: any) {
       toast({
@@ -130,20 +168,20 @@ export function ViewRecordsDialog({
                         {record.fileName}
                       </span>
                       {record.recordType && (
-                        <Badge variant="secondary" className="font-normal">
+                        <Badge variant="secondary" className="font-normal text-[10px] px-1.5 py-0">
                           {record.recordType}
                         </Badge>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {new Date(record.uploadDate).toLocaleDateString()}
                       {record.metadata?.description && ` • ${record.metadata.description}`}
                     </p>
                   </div>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="shrink-0 gap-2 hover:bg-primary hover:text-white transition-all shadow-sm"
+                    className="shrink-0 gap-2 font-bold text-xs text-primary hover:bg-primary/10 transition-all"
                     disabled={decryptingId === record._id}
                     onClick={() => handleViewRecord(record)}
                   >
@@ -152,7 +190,7 @@ export function ViewRecordsDialog({
                     ) : (
                       <Eye className="h-4 w-4" />
                     )}
-                    View & Decrypt
+                    Professional View
                   </Button>
                 </div>
               ))}

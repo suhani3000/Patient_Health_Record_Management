@@ -93,7 +93,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { requireVerified } from "@/lib/auth/middleware"
-import type { MedicalRecord, AccessPermission, AuditLog, User } from "@/lib/db/models"
+import type { MedicalRecord, AccessPermission, AuditLog, User, Followup } from "@/lib/db/models"
 import { ObjectId } from "mongodb"
 import { pinFileToIPFS } from "@/lib/ipfs"
 
@@ -137,6 +137,7 @@ export async function POST(req: NextRequest) {
     const permissionsCollection = db.collection<AccessPermission>("accessPermissions")
     const recordsCollection = db.collection<MedicalRecord>("medicalRecords")
     const auditLogsCollection = db.collection<AuditLog>("auditLogs")
+    const followupsCollection = db.collection<Followup>("followups")
 
     // Check upload permission
     const permission = await permissionsCollection.findOne({
@@ -203,6 +204,19 @@ export async function POST(req: NextRequest) {
     }
 
     await auditLogsCollection.insertOne(auditLog as any)
+
+    // Log followup description
+    const newFollowup: Omit<Followup, "_id"> = {
+      patientId: patientOid,
+      doctorId: doctorOid,
+      doctorName: doctorUserDoc?.name || "Dr. Unknown",
+      doctorSpecialization: doctorUserDoc?.specialization || "Physician",
+      action: "upload",
+      recordId: recordResult.insertedId.toString(),
+      description,
+      timestamp: new Date(),
+    }
+    await followupsCollection.insertOne(newFollowup as any)
 
     return NextResponse.json(
       {

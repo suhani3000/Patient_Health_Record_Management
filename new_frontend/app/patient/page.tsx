@@ -13,6 +13,8 @@ import { UploadDialog } from "@/components/patient/upload-dialog"
 import { formatIdentifier } from "@/lib/utils/format"
 import { unwrapAESKey, decryptFile } from "@/lib/crypto"
 import { GrantAccessDialog } from "@/components/patient/grant-access-dialog"
+import { FollowupsTimelineDialog } from "@/components/dashboard/followups-timeline-dialog"
+import { MessageCircle, Calendar, ArrowUpCircle } from "lucide-react"
 
 export default function PatientDashboard() {
   const router = useRouter()
@@ -147,6 +149,62 @@ export default function PatientDashboard() {
     router.push("/")
   }
 
+  function FollowupTimelineView() {
+    const [followups, setFollowups] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+      const fetchFollowups = async () => {
+        try {
+          const res = await fetch("/api/followup", { headers: getAuthHeaders() })
+          const data = await res.json()
+          setFollowups(data.followups || [])
+        } catch (e) {
+          console.error(e)
+        } finally {
+          setLoading(false)
+        }
+      }
+      fetchFollowups()
+    }, [])
+
+    if (loading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+    if (followups.length === 0) return <p className="text-center text-muted-foreground py-8">No follow-up journey recorded yet.</p>
+
+    return (
+      <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-slate-200">
+        {followups.map((item) => (
+          <div key={item._id} className="relative flex items-start gap-6 pl-12">
+            <div className="absolute left-0 mt-1 flex h-10 w-10 items-center justify-center rounded-full border bg-white shadow-sm ring-4 ring-slate-50">
+              {item.action === "upload" ? (
+                <ArrowUpCircle className="h-4 w-4 text-emerald-500" />
+              ) : item.action === "observation" ? (
+                <MessageCircle className="h-4 w-4 text-purple-500" />
+              ) : (
+                <Eye className="h-4 w-4 text-blue-500" />
+              )}
+            </div>
+            <div className="flex-1">
+              <div className="flex justify-between items-start mb-1">
+                <div>
+                  <p className="font-bold text-sm">{item.doctorName}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">{item.doctorSpecialization}</p>
+                </div>
+                <span className="text-[10px] text-muted-foreground font-bold flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {new Date(item.timestamp).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="mt-2 p-3 rounded-xl bg-white border shadow-sm italic text-xs text-slate-600">
+                "{item.description}"
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -205,6 +263,9 @@ export default function PatientDashboard() {
             </TabsTrigger>
             <TabsTrigger value="trends" className="gap-2 rounded-lg">
               <Activity className="h-4 w-4" /> Health Trends
+            </TabsTrigger>
+            <TabsTrigger value="followups" className="gap-2 rounded-lg">
+              <MessageCircle className="h-4 w-4" /> Clinical Follow-ups
             </TabsTrigger>
           </TabsList>
 
@@ -359,6 +420,21 @@ export default function PatientDashboard() {
                     </LineChart>
                   </ResponsiveContainer>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="followups">
+            <Card className="border-none shadow-sm ring-1 ring-border">
+              <CardHeader>
+                <CardTitle>Professional Follow-up Timeline</CardTitle>
+                <CardDescription>Clinical notes and observations recorded by doctors during your care</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-slate-50/50 rounded-2xl p-6 border border-dashed border-slate-200">
+                   <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-8 text-center">Interactive Care History</p>
+                   <FollowupTimelineView />
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

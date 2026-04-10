@@ -216,11 +216,13 @@ export function GrantAccessDialog({ onGrantSuccess, fileId = 0 }: GrantAccessDia
                 <SelectTrigger><SelectValue placeholder="Choose a user" /></SelectTrigger>
                 <SelectContent>
                   {users.map((u) => (
-                    <SelectItem key={u._id} value={u._id}>
-                      {u.name} — {u.email}
-                      {u.specialization && ` (${u.specialization})`}
-                      {!u.blockchainAddress && " ⚠️ no wallet"}
-                      {!u.encryptionPublicKey && " 🔑 no enc key"}
+                    <SelectItem key={u._id} value={u._id} className="py-2 focus:bg-slate-50">
+                      <div className="flex flex-col gap-0.5 max-w-[280px]">
+                        <span className="font-bold text-slate-800 truncate">{u.name}</span>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">
+                          {u.specialization || u.role}
+                        </span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
