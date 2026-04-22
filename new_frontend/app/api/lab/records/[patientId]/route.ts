@@ -12,7 +12,7 @@ export async function GET(
   try {
     const user = requireVerified(req)
 
-    if (user.role !== "doctor") {
+    if (user.role !== "lab") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
@@ -28,11 +28,11 @@ export async function GET(
     const auditLogsCollection = db.collection<AuditLog>("auditLogs")
     const usersCollection = db.collection<User>("users")
 
-    // Get doctor's blockchain address
-    const doctorDoc = await usersCollection.findOne({
+    // Get lab's blockchain address
+    const labDoc = await usersCollection.findOne({
       _id: new ObjectId(user.userId),
     })
-    const doctorChain = doctorDoc?.blockchainAddress?.toLowerCase() ?? ""
+    const labChain = labDoc?.blockchainAddress?.toLowerCase() ?? ""
 
     // Verify access permission
     const patientObjectId = new ObjectId(patientId)
@@ -60,8 +60,8 @@ export async function GET(
     const mapped = records.map((rec) => {
       const keys = rec.doctorKeys ?? {}
       const myEncryptedAESKey =
-        doctorChain && keys[doctorChain]
-          ? String(keys[doctorChain])
+        labChain && keys[labChain]
+          ? String(keys[labChain])
           : undefined
 
       const cid = rec.cid ?? rec.fileCID
@@ -78,7 +78,7 @@ export async function GET(
     const auditLog: Omit<AuditLog, "_id"> = {
       action: "view_record",
       performedBy: user.userId,
-      performedByRole: "doctor",
+      performedByRole: "lab",
       patientId,
       timestamp: new Date(),
       metadata: {
@@ -91,7 +91,7 @@ export async function GET(
     return NextResponse.json({ records: mapped }, { status: 200 })
 
   } catch (error: any) {
-    console.error("[Doctor Records API] Error:", error)
+    console.error("[Lab Records API] Error:", error)
     if (error.message === "Unauthorized" || error.message.includes("verified")) {
       return NextResponse.json({ error: error.message }, { status: 401 })
     }

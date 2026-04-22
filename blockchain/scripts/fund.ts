@@ -8,6 +8,9 @@ async function main() {
   // 3. COPY YOUR DOCTOR'S BLOCKCHAIN ADDRESS HERE:
   const doctorAddress = "0x182d67ca6e1eda7fc3e879117e1e70627b4a5bd5"
 
+  // 4. COPY YOUR LAB'S BLOCKCHAIN ADDRESS HERE:
+  const labAddress = "0x5aaebabff3ac7a1bfdacaaaea8ff2f3134327b25"
+
   const [deployer] = await ethers.getSigners()
 
   console.log("\n--- Local ETH funding script ---")
@@ -23,6 +26,12 @@ async function main() {
   if (doctorAddress.startsWith("0x") && doctorAddress.length === 42) {
     await deployer.sendTransaction({ to: doctorAddress, value: ethers.parseEther("10.0") })
     console.log(`✅ Sent 10 ETH to Doctor: ${doctorAddress}`)
+  }
+
+  // Fund Lab
+  if (labAddress.startsWith("0x") && labAddress.length === 42) {
+    await deployer.sendTransaction({ to: labAddress, value: ethers.parseEther("10.0") })
+    console.log(`✅ Sent 10 ETH to Lab: ${labAddress}`)
   }
 }
 

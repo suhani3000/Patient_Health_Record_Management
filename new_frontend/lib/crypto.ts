@@ -47,7 +47,16 @@ export function hasPrivateKey(address: string): boolean {
 
 function loadPrivateKeyJwk(address: string): JsonWebKey {
   const raw = localStorage.getItem(`${PRIV_KEY_PREFIX}${address.toLowerCase()}`)
-  if (!raw) throw new Error("No encryption key found. Please log out and log in again.")
+  if (!raw) {
+    const addr = address?.toLowerCase?.() ? address.toLowerCase() : String(address ?? "")
+    throw new Error(
+      [
+        `No encryption private key found for this wallet (${addr.slice(0, 10)}…).`,
+        "Open /security and import your Recovery Key on this device.",
+        "If you signed in with a different method (Email vs Google), Thirdweb will generate a different wallet and your keys will not match.",
+      ].join(" ")
+    )
+  }
   return JSON.parse(raw)
 }
 
@@ -104,54 +113,21 @@ export async function decryptFile(
 
 // ─── RSA Key Wrapping ─────────────────────────────────────────────────────────
 
-/** Encrypt a raw AES key with someone's RSA public key */
-// export async function wrapAESKey(
-//   aesKeyRaw: ArrayBuffer,
-//   recipientPublicKeyB64: string
-// ): Promise<string> {
-//   const pubKey = await importPublicKey(recipientPublicKeyB64)
-//   const encrypted = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, pubKey, aesKeyRaw)
-//   return btoa(String.fromCharCode(...new Uint8Array(encrypted)))
-// }
-
-/** Decrypt an RSA-wrapped AES key using the wallet address's stored private key */
-// export async function unwrapAESKey(
-//   encryptedAESKeyB64: string,
-//   address: string
-// ): Promise<ArrayBuffer> {
-//   const jwk = loadPrivateKeyJwk(address)
-//   const privKey = await importPrivateKey(jwk)
-//   const encrypted = Uint8Array.from(atob(encryptedAESKeyB64), (c) => c.charCodeAt(0))
-//   return crypto.subtle.decrypt({ name: "RSA-OAEP" }, privKey, encrypted)
-// }
-
-
-// ENHANCE: new_frontend/lib/crypto.ts - Add debug logging
-
-// (Add these enhanced functions alongside existing code)
-
 export async function unwrapAESKey(
   encryptedAESKeyB64: string,
   address: string
 ): Promise<ArrayBuffer> {
   try {
-    console.log(`[Crypto] Unwrapping AES key for address ${address.substring(0, 8)}...`)
-    
     const jwk = loadPrivateKeyJwk(address)
     const privKey = await importPrivateKey(jwk)
     const encrypted = Uint8Array.from(atob(encryptedAESKeyB64), (c) => c.charCodeAt(0))
     
-    const aesKeyRaw = await crypto.subtle.decrypt(
+    return await crypto.subtle.decrypt(
       { name: "RSA-OAEP" },
       privKey,
       encrypted
     )
-    
-    console.log(`[Crypto] AES key unwrapped successfully (${aesKeyRaw.byteLength} bytes)`)
-    return aesKeyRaw
-    
   } catch (err: any) {
-    console.error(`[Crypto] Unwrap failed:`, err.message)
     throw new Error(`Cannot decrypt AES key: ${err.message}`)
   }
 }
@@ -161,8 +137,6 @@ export async function wrapAESKey(
   recipientPublicKeyB64: string
 ): Promise<string> {
   try {
-    console.log(`[Crypto] Wrapping AES key (${aesKeyRaw.byteLength} bytes) with recipient's public key`)
-    
     const pubKey = await importPublicKey(recipientPublicKeyB64)
     const encrypted = await crypto.subtle.encrypt(
       { name: "RSA-OAEP" },
@@ -170,13 +144,8 @@ export async function wrapAESKey(
       aesKeyRaw
     )
     
-    const wrapped = btoa(String.fromCharCode(...new Uint8Array(encrypted)))
-    console.log(`[Crypto] AES key wrapped successfully (${wrapped.length} chars)`)
-    
-    return wrapped
-    
+    return btoa(String.fromCharCode(...new Uint8Array(encrypted)))
   } catch (err: any) {
-    console.error(`[Crypto] Wrap failed:`, err.message)
     throw new Error(`Cannot wrap AES key: ${err.message}`)
   }
 }

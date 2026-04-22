@@ -6,8 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, Shield, Activity, LogOut, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import { Users, Shield, Activity, LogOut, CheckCircle, XCircle, AlertCircle, Loader2, Database } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { formatIdentifier } from "@/lib/utils/format"
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -49,41 +50,27 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true)
     try {
+      const headers = getAuthHeaders()
       const [pendingRes, usersRes, logsRes, statsRes] = await Promise.all([
-        fetch("/api/admin/pending-verifications", { headers: getAuthHeaders() }),
-        fetch("/api/admin/users", { headers: getAuthHeaders() }),
-        fetch("/api/admin/audit-logs?limit=50", { headers: getAuthHeaders() }),
-        fetch("/api/admin/stats", { headers: getAuthHeaders() }),
+        fetch("/api/admin/pending-verifications", { headers }),
+        fetch("/api/admin/users", { headers }),
+        fetch("/api/admin/audit-logs?limit=50", { headers }),
+        fetch("/api/admin/stats", { headers }),
       ])
 
-      if (pendingRes.ok) {
-        const data = await pendingRes.json()
-        setPendingUsers(data.users || [])
-      }
+      const [pendingData, usersData, logsData, statsData] = await Promise.all([
+        pendingRes.json(), usersRes.json(), logsRes.json(), statsRes.json()
+      ])
 
-      if (usersRes.ok) {
-        const data = await usersRes.json()
-        setAllUsers(data.users || [])
-      }
-
-      if (logsRes.ok) {
-        const data = await logsRes.json()
-        setAuditLogs(data.logs || [])
-      }
-
-      if (statsRes.ok) {
-        const data = await statsRes.json()
-        setStats(data.stats)
-      }
+      setPendingUsers(pendingData.users || [])
+      setAllUsers(usersData.users || [])
+      setAuditLogs(logsData.logs || [])
+      setStats(statsData.stats)
     } catch (error) {
-      console.error("Error loading data:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load data. Please refresh the page.",
-        variant: "destructive",
-      })
+      toast({ title: "Sync Failed", description: "Failed to load administrative data.", variant: "destructive" })
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleVerifyUser = async (userId: string, action: "approve" | "reject") => {
@@ -94,24 +81,12 @@ export default function AdminDashboard() {
         body: JSON.stringify({ userId, action }),
       })
 
-      const data = await res.json()
+      if (!res.ok) throw new Error("Verification failed")
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to verify user")
-      }
-
-      toast({
-        title: action === "approve" ? "User Approved" : "User Rejected",
-        description: data.message,
-      })
-
+      toast({ title: "Action Succeeded", description: `User has been ${action}d successfully.` })
       loadData()
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to verify user",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     }
   }
 
@@ -123,24 +98,12 @@ export default function AdminDashboard() {
         body: JSON.stringify({ userId, action }),
       })
 
-      const data = await res.json()
+      if (!res.ok) throw new Error("Action failed")
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to block/unblock user")
-      }
-
-      toast({
-        title: action === "block" ? "User Blocked" : "User Unblocked",
-        description: data.message,
-      })
-
+      toast({ title: "Status Updated", description: `User has been ${action}ed.` })
       loadData()
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to block/unblock user",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     }
   }
 
@@ -152,133 +115,88 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div>
-            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-            <p className="text-sm text-muted-foreground">System Administration & User Management</p>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="border-b bg-white shadow-sm sticky top-0 z-10">
+        <div className="container mx-auto flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 bg-slate-900 rounded-lg flex items-center justify-center">
+              <Shield className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold leading-none capitalize">Admin Control Panel</h1>
+              <p className="text-xs text-slate-400 mt-1 font-bold">{user?.name} [Identity Governance]</p>
+            </div>
           </div>
-          <Button variant="ghost" onClick={handleLogout} className="gap-2">
+          <Button variant="ghost" onClick={handleLogout} className="gap-2 text-slate-400 hover:text-destructive">
             <LogOut className="h-4 w-4" />
             Logout
           </Button>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-6 py-8">
         {stats && (
-          <div className="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.users.total}</div>
-                <p className="text-xs text-muted-foreground">
-                  {stats.users.patients} patients, {stats.users.doctors} doctors, {stats.users.labs} labs
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pending Verifications</CardTitle>
-                <AlertCircle className="h-4 w-4 text-yellow-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.pending.doctors + stats.pending.labs}</div>
-                <p className="text-xs text-muted-foreground">
-                  {stats.pending.doctors} doctors, {stats.pending.labs} labs
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Medical Records</CardTitle>
-                <Activity className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.records.total}</div>
-                <p className="text-xs text-muted-foreground">Total records uploaded</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Permissions</CardTitle>
-                <Shield className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.permissions.active}</div>
-                <p className="text-xs text-muted-foreground">Out of {stats.permissions.total} total</p>
-              </CardContent>
-            </Card>
+          <div className="mb-8 grid gap-6 md:grid-cols-4">
+            {[
+              { label: "Total Users", val: stats.users.total, icon: Users, color: "text-blue-600" },
+              { label: "Pending", val: stats.pending.doctors + stats.pending.labs, icon: AlertCircle, color: "text-amber-600" },
+              { label: "IPFS Files", val: stats.records.total, icon: Database, color: "text-emerald-600" },
+              { label: "Active Grants", val: stats.permissions.active, icon: Activity, color: "text-indigo-600" },
+            ].map((s) => (
+              <Card key={s.label} className="border-none shadow-sm ring-1 ring-black/5">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{s.label}</span>
+                  <s.icon className={`h-4 w-4 ${s.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-black text-slate-800">{s.val}</div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         )}
 
-        <Tabs defaultValue="pending" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="pending" className="gap-2">
-              <AlertCircle className="h-4 w-4" />
-              Pending Verifications ({pendingUsers.length})
+        <Tabs defaultValue="pending" className="space-y-6">
+          <TabsList className="bg-slate-200/50 p-1 rounded-xl w-fit">
+            <TabsTrigger value="pending" className="gap-2 rounded-lg font-bold">
+              Verification <Badge variant="secondary" className="ml-1 text-[10px] py-0 px-1">{pendingUsers.length}</Badge>
             </TabsTrigger>
-            <TabsTrigger value="users" className="gap-2">
-              <Users className="h-4 w-4" />
-              All Users
-            </TabsTrigger>
-            <TabsTrigger value="audit" className="gap-2">
-              <Activity className="h-4 w-4" />
-              Audit Logs
-            </TabsTrigger>
+            <TabsTrigger value="users" className="gap-2 rounded-lg font-bold">Directories</TabsTrigger>
+            <TabsTrigger value="audit" className="gap-2 rounded-lg font-bold">System Logs</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="pending" className="space-y-4">
-            <Card>
+          <TabsContent value="pending">
+            <Card className="border-none shadow-sm ring-1 ring-black/5">
               <CardHeader>
-                <CardTitle>Pending User Verifications</CardTitle>
-                <CardDescription>Approve or reject doctors and lab technicians</CardDescription>
+                <CardTitle className="text-xl font-bold">Pending Professional Credentials</CardTitle>
+                <CardDescription>Verify identities before clinical permissions are enabled.</CardDescription>
               </CardHeader>
               <CardContent>
                 {pendingUsers.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No pending verifications</p>
+                  <div className="py-20 text-center text-slate-400 font-bold italic uppercase tracking-widest text-xs">All clear. No pending verifications.</div>
                 ) : (
-                  <div className="space-y-3">
-                    {pendingUsers.map((pendingUser) => (
-                      <div key={pendingUser._id} className="flex items-center justify-between rounded-lg border p-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{pendingUser.name}</span>
-                            <Badge variant="outline">{pendingUser.role}</Badge>
+                  <div className="grid gap-4">
+                    {pendingUsers.map((p) => (
+                      <div key={p._id} className="flex items-center justify-between p-5 rounded-2xl border bg-white shadow-sm ring-1 ring-black/5">
+                        <div>
+                          <p className="font-bold text-lg text-slate-800">{p.name}</p>
+                          <div className="flex gap-2 mt-1">
+                            <Badge variant="outline" className="text-[10px] uppercase font-bold text-slate-400">{p.role}</Badge>
+                            <span className="text-xs text-slate-400">{p.email}</span>
                           </div>
-                          <p className="mt-1 text-sm text-muted-foreground">{pendingUser.email}</p>
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => handleVerifyUser(pendingUser._id, "approve")}
-                            className="gap-2"
-                          >
-                            <CheckCircle className="h-4 w-4" />
+                        <div className="flex gap-3">
+                          <Button size="sm" onClick={() => handleVerifyUser(p._id, "approve")} className="gap-2 bg-emerald-600 hover:bg-emerald-700 font-bold">
                             Approve
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleVerifyUser(pendingUser._id, "reject")}
-                            className="gap-2"
-                          >
-                            <XCircle className="h-4 w-4" />
+                          <Button size="sm" variant="destructive" onClick={() => handleVerifyUser(p._id, "reject")} className="gap-2 font-bold">
                             Reject
                           </Button>
                         </div>
@@ -290,82 +208,57 @@ export default function AdminDashboard() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="users" className="space-y-4">
-            <Card>
+          <TabsContent value="users">
+            <Card className="border-none shadow-sm ring-1 ring-black/5">
               <CardHeader>
-                <CardTitle>All System Users</CardTitle>
-                <CardDescription>Manage and monitor all registered users</CardDescription>
+                <CardTitle className="text-xl font-bold">Network Participant Directory</CardTitle>
               </CardHeader>
               <CardContent>
-                {allUsers.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No users found</p>
-                ) : (
-                  <div className="space-y-3">
-                    {allUsers.map((systemUser) => (
-                      <div key={systemUser._id} className="flex items-center justify-between rounded-lg border p-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{systemUser.name}</span>
-                            <Badge variant="outline">{systemUser.role}</Badge>
-                            {systemUser.isVerified && <Badge variant="secondary">Verified</Badge>}
-                            {systemUser.isBlocked && <Badge variant="destructive">Blocked</Badge>}
-                          </div>
-                          <p className="text-sm text-muted-foreground">{systemUser.email}</p>
+                <div className="grid gap-2">
+                  {allUsers.map((u) => (
+                    <div key={u._id} className="flex items-center justify-between p-4 rounded-xl border bg-white hover:bg-slate-50 transition-colors">
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-800">{u.name}</span>
+                          <Badge variant="secondary" className="text-[10px] uppercase font-black text-slate-400 tracking-tighter">{u.role}</Badge>
+                          {u.isVerified && <CheckCircle className="h-3 w-3 text-emerald-500" />}
                         </div>
-                        {!systemUser.isBlocked && systemUser.role !== "admin" && (
-                          <Button size="sm" variant="outline" onClick={() => handleBlockUser(systemUser._id, "block")}>
-                            Block
-                          </Button>
-                        )}
-                        {systemUser.isBlocked && (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => handleBlockUser(systemUser._id, "unblock")}
-                          >
-                            Unblock
-                          </Button>
-                        )}
+                        <span className="text-xs text-slate-400 font-medium">{formatIdentifier(u.blockchainAddress)} • {u.email}</span>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      {u.role !== "admin" && (
+                        <Button size="sm" variant={u.isBlocked ? "default" : "outline"} onClick={() => handleBlockUser(u._id, u.isBlocked ? "unblock" : "block")} className="font-bold text-[10px]">
+                          {u.isBlocked ? "UNBLOCK" : "BLOCK USER"}
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="audit" className="space-y-4">
-            <Card>
+          <TabsContent value="audit">
+            <Card className="border-none shadow-sm ring-1 ring-black/5">
               <CardHeader>
-                <CardTitle>System Audit Logs</CardTitle>
-                <CardDescription>Monitor all system activities and access logs</CardDescription>
+                <CardTitle className="text-xl font-bold">Forensic System Logs</CardTitle>
+                <CardDescription>Real-time audit of all network events.</CardDescription>
               </CardHeader>
               <CardContent>
-                {auditLogs.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No audit logs yet</p>
-                ) : (
-                  <div className="space-y-2">
-                    {auditLogs.map((log) => (
-                      <div key={log._id} className="rounded-lg border p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{log.action.replace(/_/g, " ")}</Badge>
-                            <span className="text-sm">
-                              by <span className="font-medium">{log.performedByUser?.name || "Unknown"}</span> (
-                              {log.performedByRole})
-                            </span>
-                            {log.patient && (
-                              <span className="text-sm text-muted-foreground">for patient {log.patient.name}</span>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(log.timestamp).toLocaleString()}
-                          </span>
-                        </div>
+                <div className="divide-y divide-slate-100">
+                  {auditLogs.map((log) => (
+                    <div key={log._id} className="flex items-center justify-between py-4 text-xs font-bold text-slate-500">
+                      <div className="flex items-center gap-4">
+                        <Badge variant="outline" className="text-[9px] uppercase tracking-tighter opacity-70">
+                          {log.action.replace("_", " ")}
+                        </Badge>
+                        <span className="text-slate-700">
+                          {log.performedByUser?.name || "System"} [{log.performedByRole.toUpperCase()}]
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <span className="opacity-40">{new Date(log.timestamp).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

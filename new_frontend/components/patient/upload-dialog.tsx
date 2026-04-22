@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useActiveAccount } from "thirdweb/react"
 import { getContract, prepareContractCall, sendTransaction, waitForReceipt } from "thirdweb"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Upload, AlertTriangle, Lock } from "lucide-react"
+import { Upload, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
   thirdwebClient,
@@ -21,7 +21,6 @@ import {
   EHRRegistryABI,
   EHR_REGISTRY_ADDRESS_DEPLOYED,
 } from "@/lib/contracts"
-import { encryptFile, wrapAESKey } from "@/lib/crypto"
 
 interface UploadDialogProps {
   onUploadSuccess: () => void
@@ -34,6 +33,7 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
   const account = useActiveAccount()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const submitInFlightRef = useRef(false)
   const [uploadStage, setUploadStage] = useState<UploadStage>("idle")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [recordType, setRecordType] = useState("")
@@ -46,58 +46,34 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Guard against double-submit (double click, Enter key repeat, etc.)
+    if (submitInFlightRef.current || loading) return
+    submitInFlightRef.current = true
+
     if (!selectedFile || !recordType) {
       toast({ title: "Missing fields", description: "Select a file and record type.", variant: "destructive" })
+      submitInFlightRef.current = false
       return
     }
 
     const token = localStorage.getItem("token")
     if (!token) {
       toast({ title: "Not logged in", variant: "destructive" })
+      submitInFlightRef.current = false
       return
     }
 
     setLoading(true)
 
     try {
-      // ── Step 1: Encrypt the file client-side ──────────────────────────────
-      setUploadStage("encrypting")
-
-      const fileBuffer = await selectedFile.arrayBuffer()
-      const { encryptedBuffer, aesKeyRaw, ivB64 } = await encryptFile(fileBuffer)
-
-      // Get patient's encryption public key from localStorage (stored after login)
-      // We need to fetch it from the backend since we stored it there
-      let encryptedAESKey: string | null = null
-      try {
-        // Fetch the current user's public key from their profile
-        const profileRes = await fetch("/api/auth/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (profileRes.ok) {
-          const profileData = await profileRes.json()
-          const patientPublicKey = profileData.user?.encryptionPublicKey
-          if (patientPublicKey) {
-            encryptedAESKey = await wrapAESKey(aesKeyRaw, patientPublicKey)
-          }
-        }
-      } catch {
-        console.warn("[UploadDialog] Could not wrap AES key — record will be stored without encryption key")
-      }
-
-      // ── Step 2: Upload ENCRYPTED blob to IPFS ────────────────────────────
+      // ── Step 1: Upload plaintext file to IPFS ────────────────────────────
       setUploadStage("uploading-ipfs")
 
-      const encryptedBlob = new Blob([encryptedBuffer], { type: "application/octet-stream" })
-      const encryptedFile = new File([encryptedBlob], `${selectedFile.name}.enc`)
-
       const formData = new FormData()
-      formData.append("file", encryptedFile)
+      formData.append("file", selectedFile)
       formData.append("fileName", selectedFile.name) // original name for display
       formData.append("recordType", recordType)
       formData.append("description", description)
-      if (encryptedAESKey) formData.append("encryptedAESKey", encryptedAESKey)
-      formData.append("aesIV", ivB64)
 
       const uploadRes = await fetch("/api/patient/records", {
         method: "POST",
@@ -188,14 +164,14 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
       if (blockchainWarning) {
         toast({
           title: "File Uploaded (Off-Chain Only) ⚠️",
-          description: "File is encrypted on IPFS. Blockchain step was skipped — start Hardhat and set contract addresses.",
+          description: "File stored on IPFS. Blockchain step was skipped — start Hardhat and set contract addresses.",
           variant: "destructive",
           duration: 8000,
         })
       } else {
         toast({
-          title: "Upload Successful 🔒✅",
-          description: `Encrypted & stored on IPFS. On-chain File ID: ${fileId} | TX: ${transactionHash?.slice(0, 16)}…`,
+          title: "Upload Successful ✅",
+          description: `Stored on IPFS. On-chain File ID: ${fileId} | TX: ${transactionHash?.slice(0, 16)}…`,
           duration: 6000,
         })
       }
@@ -210,12 +186,13 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
     } finally {
       setLoading(false)
       setUploadStage("idle")
+      submitInFlightRef.current = false
     }
   }
 
   const stageLabel: Record<UploadStage, string> = {
     idle: "Upload",
-    encrypting: "Encrypting file…",
+    encrypting: "Preparing upload…",
     "uploading-ipfs": "Uploading to IPFS…",
     "registering-chain": "Registering on blockchain…",
     "saving-db": "Saving record…",
@@ -234,8 +211,7 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
           <DialogHeader>
             <DialogTitle>Upload Medical Record</DialogTitle>
             <DialogDescription className="flex items-center gap-1">
-              <Lock className="h-3 w-3" />
-              File is encrypted in your browser before upload. Your key never leaves your device.
+              File will be uploaded to IPFS.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -262,7 +238,7 @@ export function UploadDialog({ onUploadSuccess }: UploadDialogProps) {
             </div>
             {!EHR_REGISTRY_ADDRESS_DEPLOYED && (
               <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 p-3 rounded-md">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span><strong>NEXT_PUBLIC_EHR_REGISTRY_ADDRESS</strong> not set or invalid. Blockchain step will be skipped.</span>
               </div>
             )}

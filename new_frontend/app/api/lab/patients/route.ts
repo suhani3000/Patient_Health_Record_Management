@@ -20,7 +20,6 @@ export async function GET(req: NextRequest) {
       .find({
         grantedTo: user.userId,
         isActive: true,
-        accessLevel: { $regex: "upload" },
       })
       .toArray()
 

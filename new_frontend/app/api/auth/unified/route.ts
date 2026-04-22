@@ -2,8 +2,42 @@ import { NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/db/mongo"
 import { generateToken } from "@/lib/auth/jwt"
 import type { User } from "@/lib/db/models"
+import crypto from "crypto"
 
 export const runtime = "nodejs"
+
+const ESCROW_SECRET = process.env.KEY_ESCROW_SECRET ?? "dev-insecure-escrow-secret"
+
+function deriveEscrowKey(): Buffer {
+  // 32-byte AES-256 key
+  return crypto.createHash("sha256").update(ESCROW_SECRET).digest()
+}
+
+function encryptEscrowString(plaintext: string): User["encryptionPrivateKeyEscrow"] {
+  const iv = crypto.randomBytes(12) // recommended length for GCM
+  const key = deriveEscrowKey()
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv)
+  const cipherText = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()])
+  const tag = cipher.getAuthTag()
+
+  return {
+    ivB64: iv.toString("base64"),
+    tagB64: tag.toString("base64"),
+    cipherB64: cipherText.toString("base64"),
+  }
+}
+
+function decryptEscrowString(payload: NonNullable<User["encryptionPrivateKeyEscrow"]>): string {
+  const key = deriveEscrowKey()
+  const iv = Buffer.from(payload.ivB64, "base64")
+  const tag = Buffer.from(payload.tagB64, "base64")
+  const cipherText = Buffer.from(payload.cipherB64, "base64")
+
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv)
+  decipher.setAuthTag(tag)
+  const plaintext = Buffer.concat([decipher.update(cipherText), decipher.final()]).toString("utf8")
+  return plaintext
+}
 
 /**
  * POST /api/auth/unified
@@ -25,7 +59,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
     }
 
-    const { blockchainAddress, email, role, encryptionPublicKey } = body
+    const {
+      blockchainAddress,
+      email,
+      role,
+      encryptionPublicKey,
+      encryptionPrivateKeyJwk,
+      requestEncryptionPrivateKeyJwk,
+    } = body
     // ── Validation ──────────────────────────────────────────────────────────
     if (!blockchainAddress) {
       return NextResponse.json(
@@ -85,6 +126,25 @@ export async function POST(req: NextRequest) {
         resolvedEncryptionPublicKey = encryptionPublicKey
       }
 
+      // If the client generated keys on this device, store the RSA private key escrow (encrypted).
+      if (encryptionPrivateKeyJwk) {
+        const escrowPayload = encryptEscrowString(JSON.stringify(encryptionPrivateKeyJwk))
+        await usersCollection.updateOne(
+          { _id: existingUser._id },
+          { $set: { encryptionPrivateKeyEscrow: escrowPayload } }
+        )
+      }
+
+      let resolvedEncryptionPrivateKeyJwk: any = null
+      if (requestEncryptionPrivateKeyJwk && existingUser.encryptionPrivateKeyEscrow) {
+        try {
+          const decrypted = decryptEscrowString(existingUser.encryptionPrivateKeyEscrow)
+          resolvedEncryptionPrivateKeyJwk = JSON.parse(decrypted)
+        } catch (e) {
+          console.warn("[Unified Auth] Failed to decrypt escrow private key:", e)
+        }
+      }
+
       const token = generateToken({
         userId: existingUser._id.toString(),
         email: existingUser.email,
@@ -106,7 +166,24 @@ export async function POST(req: NextRequest) {
           encryptionPublicKey: resolvedEncryptionPublicKey ?? null,
         },
         needsProfileCompletion: false,
+        ...(resolvedEncryptionPrivateKeyJwk
+          ? { encryptionPrivateKeyJwk: resolvedEncryptionPrivateKeyJwk }
+          : {}),
       })
+    }
+
+    // Prevent auto-registration when the client is only trying to restore
+    // the encryption private key from escrow.
+    // Auto-registering here would create a different account/encryption context
+    // and guarantees decryption will still fail.
+    if (requestEncryptionPrivateKeyJwk) {
+      return NextResponse.json(
+        {
+          error:
+            "No user found for this wallet address. Import your Recovery Key once to seed escrow.",
+        },
+        { status: 404 }
+      )
     }
 
     // ── NEW USER — auto-register ──────────────────────────────────────────────
@@ -130,6 +207,9 @@ export async function POST(req: NextRequest) {
       isBlocked: false,
       blockchainAddress: normalizedAddress,
       encryptionPublicKey: encryptionPublicKey ?? undefined,
+      ...(encryptionPrivateKeyJwk
+        ? { encryptionPrivateKeyEscrow: encryptEscrowString(JSON.stringify(encryptionPrivateKeyJwk)) }
+        : {}),
       createdAt: new Date(),
       updatedAt: new Date(),
     }

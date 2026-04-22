@@ -76,6 +76,10 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
           blockchainAddress: walletAddress,
           email: null, // backend derives email from the wallet record
           role,
+          // Do not request private-key escrow on the first call.
+          // For new users, this would otherwise block auto-registration.
+          // We'll request escrow only after we know `user.encryptionPublicKey` exists.
+          requestEncryptionPrivateKeyJwk: false,
         }),
       })
 
@@ -88,17 +92,35 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
       localStorage.setItem("token", token)
       localStorage.setItem("user", JSON.stringify(user))
 
-      // ── Step 3: Encryption key — new device with existing server key must import recovery key ──
+      // ── Step 3: Encryption key — restore from server escrow (auto) ──
       if (!hasPrivateKey(walletAddress)) {
         if (user.encryptionPublicKey) {
-          toast({
-            title: "New device detected",
-            description:
-              "Open /security (Security & recovery) and import your Recovery Key to decrypt existing records.",
-            variant: "destructive",
-            duration: 12_000,
+          // Existing user: ask the server for escrowed private key.
+          const escrowRes = await fetch("/api/auth/unified", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              blockchainAddress: walletAddress,
+              email: null,
+              role,
+              requestEncryptionPrivateKeyJwk: true,
+            }),
           })
+
+          const escrowData = await escrowRes.json().catch(() => ({}))
+          if (escrowRes.ok && escrowData?.encryptionPrivateKeyJwk) {
+            savePrivateKey(walletAddress, escrowData.encryptionPrivateKeyJwk)
+          } else {
+            toast({
+              title: "Recovery key missing on server",
+              description:
+                "This browser does not have your RSA private key. Import your Recovery Key in /security once to seed escrow.",
+              variant: "destructive",
+              duration: 12_000,
+            })
+          }
         } else {
+          // New user: generate a fresh RSA keypair and seed escrow.
           const { publicKeyB64, privateKeyJwk } = await generateEncryptionKeyPair()
           savePrivateKey(walletAddress, privateKeyJwk)
 
@@ -109,8 +131,31 @@ export function WalletLogin({ role, onLoginSuccess }: WalletLoginProps) {
               blockchainAddress: walletAddress,
               role,
               encryptionPublicKey: publicKeyB64,
+              encryptionPrivateKeyJwk: privateKeyJwk,
             }),
           })
+        }
+      }
+
+      // Ensure the server has an escrowed copy so decryption works on any future device.
+      // (If the user imported/created a local key, this seeds the server-side escrow.)
+      if (hasPrivateKey(walletAddress)) {
+        try {
+          const raw = localStorage.getItem(`ehr_privkey_${walletAddress}`)
+          if (raw) {
+            const privKeyJwk = JSON.parse(raw)
+            await fetch("/api/auth/unified", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                blockchainAddress: walletAddress,
+                role,
+                encryptionPrivateKeyJwk: privKeyJwk,
+              }),
+            })
+          }
+        } catch (e) {
+          console.warn("[WalletLogin] Failed to seed server escrow:", e)
         }
       }
 
